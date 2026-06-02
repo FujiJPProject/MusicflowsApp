@@ -1,0 +1,46 @@
+# 起動するコンテナの定義
+services:
+ # Postgresコンテナ (PostgreSQL 16)
+  postgres:
+    image: postgres:16
+    container_name: music-app-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: music_app
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d music_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - music-app-network
+
+  # Flociコンテナ(AWSローカルエミュレーター)
+  floci:
+    image: floci/floci:latest
+    container_name: music-app-floci
+    ports:
+      - "4566:4566"
+    environment:
+      FLOCI_DEFAULT_REGION: ap-northeast-1
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: hybrid
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+    volumes:
+      - floci_data:/app/data
+    networks:
+      - music-app-network
+
+volumes:
+  postgres_data:
+  floci_data:
+
+networks:
+  music-app-network:
+    name: music-app-network
