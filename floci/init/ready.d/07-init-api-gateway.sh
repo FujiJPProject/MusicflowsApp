@@ -1,89 +1,138 @@
 #!/bin/sh
 set -eu
 
-PROJECT_NAME="${PROJECT_NAME:-music-app}"
-ENVIRONMENT="${ENVIRONMENT:-local}"
-AWS_REGION="${AWS_REGION:-ap-northeast-1}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/00-common.sh"
 
-REST_API_NAME="${PROJECT_NAME}-${ENVIRONMENT}-api"
-AUTHORIZER_NAME="${PROJECT_NAME}-${ENVIRONMENT}-cognito-authorizer"
-API_FUNCTION_NAME="${PROJECT_NAME}-${ENVIRONMENT}-api-handler"
+log "API Gateway" "Initialization started."
 
-PARAMETER_PREFIX="/${PROJECT_NAME}/${ENVIRONMENT}"
-ACCOUNT_ID="000000000000"
-STAGE_NAME="local"
-
-echo "[API Gateway] Initialization started."
-
-# API Gateway 用の Lambda 関数の ZIP ファイルパス
-USER_POOL_ID="$(aws ssm get-parameter \
-  --name "${PARAMETER_PREFIX}/cognito-user-pool-id" \
-  --query Parameter.Value \
-  --output text)"
-
-# Lambda 関数のコードを格納する一時ディレクトリ
-USER_POOL_ARN="arn:aws:cognito-idp:${AWS_REGION}:${ACCOUNT_ID}:userpool/${USER_POOL_ID}"
-API_FUNCTION_ARN="arn:aws:lambda:${AWS_REGION}:${ACCOUNT_ID}:function:${API_FUNCTION_NAME}"
+USER_POOL_ID="$(get_ssm_parameter "${PARAMETER_PREFIX}/cognito-user-pool-id")"
+USER_POOL_ARN="arn:aws:cognito-idp:${AWS_REGION}:${AWS_ACCOUNT_ID}:userpool/${USER_POOL_ID}"
+API_FUNCTION_ARN="arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${API_FUNCTION_NAME}"
 INTEGRATION_URI="arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${API_FUNCTION_ARN}/invocations"
 
-# API Gateway の REST API を作成または取得
+#   Rest API の作成 (存在しない場合)
 API_ID="$(aws apigateway get-rest-apis \
   --query "items[?name=='${REST_API_NAME}'].id | [0]" \
   --output text)"
 
-# REST API が存在しない場合は作成
-if [ "${API_ID}" = "None" ] || [ -z "${API_ID}" ]; then
+if is_missing_aws_value "${API_ID}"; then
   API_ID="$(aws apigateway create-rest-api \
     --name "${REST_API_NAME}" \
     --query id \
     --output text)"
-
-  echo "[API Gateway] REST API created: ${REST_API_NAME}"
+  log "API Gateway" "REST API created: ${REST_API_NAME}"
 else
-  echo "[API Gateway] REST API already exists: ${REST_API_NAME}"
+  log "API Gateway" "REST API already exists: ${REST_API_NAME}"
 fi
 
-# ルートリソースの ID を取得
+# ルート Resource ID の取得
 ROOT_RESOURCE_ID="$(aws apigateway get-resources \
   --rest-api-id "${API_ID}" \
   --query "items[?path=='/'].id | [0]" \
   --output text)"
 
-# 指定されたパスにリソースが存在しない場合は作成する関数
+# API Gateway の Resource を 存在すれば再利用し、なければ作成する 関数
 get_or_create_resource() {
-  PARENT_ID="$1"
-  PATH_PART="$2"
-  FULL_PATH="$3"
+  # 親 Resource ID (例: ルートリソースの ID, /api のリソース ID)
+  parent_id="$1"
+  # パスの一部 (例: "api", "health", "projects")
+  path_part="$2"
+    # フルパス (例: "/api", "/api/health", "/api/projects")
+  full_path="$3"
 
-  RESOURCE_ID="$(aws apigateway get-resources \
+  resource_id="$(aws apigateway get-resources \
     --rest-api-id "${API_ID}" \
-    --query "items[?path=='${FULL_PATH}'].id | [0]" \
+    --query "items[?path=='${full_path}'].id | [0]" \
     --output text)"
 
-  if [ "${RESOURCE_ID}" = "None" ] || [ -z "${RESOURCE_ID}" ]; then
-    RESOURCE_ID="$(aws apigateway create-resource \
+  if is_missing_aws_value "${resource_id}"; then
+    resource_id="$(aws apigateway create-resource \
       --rest-api-id "${API_ID}" \
-      --parent-id "${PARENT_ID}" \
-      --path-part "${PATH_PART}" \
+      --parent-id "${parent_id}" \
+      --path-part "${path_part}" \
       --query id \
       --output text)"
   fi
 
-  echo "${RESOURCE_ID}"
+  printf '%s\n' "${resource_id}"
 }
 
-# ワークディレクトリの準備
+# 認証なし GET Route 設定関数
+configure_public_get_route() {
+  resource_id="$1"
+
+  # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
+  aws apigateway delete-method \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    >/dev/null 2>&1 || true
+
+  # 認証なしの GET メソッドを作成
+  aws apigateway put-method \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    --authorization-type NONE \
+    >/dev/null
+
+  # 認証なしの GET メソッドに Lambda 統合を設定
+  # API Gateway で Lambda プロキシ統合を使用する場合、統合タイプは AWS_PROXY となり、統合 HTTP メソッドは POST になります。
+  aws apigateway put-integration \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    --type AWS_PROXY \
+    --integration-http-method POST \
+    --uri "${INTEGRATION_URI}" \
+    >/dev/null
+}
+
+# Cognito 認証付き GET Route 設定関数
+configure_cognito_get_route() {
+  resource_id="$1"
+  authorizer_id="$2"
+
+  # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
+  aws apigateway delete-method \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    >/dev/null 2>&1 || true
+
+  # Cognito 認証付きの GET メソッドを作成
+  aws apigateway put-method \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    --authorization-type COGNITO_USER_POOLS \
+    --authorizer-id "${authorizer_id}" \
+    >/dev/null
+
+  # Cognito 認証付きの GET メソッドに Lambda 統合を設定
+  aws apigateway put-integration \
+    --rest-api-id "${API_ID}" \
+    --resource-id "${resource_id}" \
+    --http-method GET \
+    --type AWS_PROXY \
+    --integration-http-method POST \
+    --uri "${INTEGRATION_URI}" \
+    >/dev/null
+}
+
+# Resourceの作成
 API_RESOURCE_ID="$(get_or_create_resource "${ROOT_RESOURCE_ID}" "api" "/api")"
 HEALTH_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "health" "/api/health")"
 PROJECTS_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "projects" "/api/projects")"
 
-# 仮の Lambda ハンドラーコードを作成 (後で本格的なコードに置き換える予定)
+# Cognito Authorizer の作成 (存在しない場合)
 AUTHORIZER_ID="$(aws apigateway get-authorizers \
   --rest-api-id "${API_ID}" \
   --query "items[?name=='${AUTHORIZER_NAME}'].id | [0]" \
   --output text)"
 
-if [ "${AUTHORIZER_ID}" = "None" ] || [ -z "${AUTHORIZER_ID}" ]; then
+if is_missing_aws_value "${AUTHORIZER_ID}"; then
   AUTHORIZER_ID="$(aws apigateway create-authorizer \
     --rest-api-id "${API_ID}" \
     --name "${AUTHORIZER_NAME}" \
@@ -92,113 +141,51 @@ if [ "${AUTHORIZER_ID}" = "None" ] || [ -z "${AUTHORIZER_ID}" ]; then
     --identity-source "method.request.header.Authorization" \
     --query id \
     --output text)"
-
-  echo "[API Gateway] Cognito authorizer created: ${AUTHORIZER_NAME}"
+  log "API Gateway" "Cognito authorizer created: ${AUTHORIZER_NAME}"
 else
-  echo "[API Gateway] Cognito authorizer already exists: ${AUTHORIZER_NAME}"
+  log "API Gateway" "Cognito authorizer already exists: ${AUTHORIZER_NAME}"
 fi
 
-# GET /api/health: 認証なし
-aws apigateway delete-method \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${HEALTH_RESOURCE_ID}" \
-  --http-method GET \
-  >/dev/null 2>&1 || true
+# Route の設定
+configure_public_get_route "${HEALTH_RESOURCE_ID}"
+configure_cognito_get_route "${PROJECTS_RESOURCE_ID}" "${AUTHORIZER_ID}"
 
-# GET /api/health: 認証なし
-aws apigateway put-method \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${HEALTH_RESOURCE_ID}" \
-  --http-method GET \
-  --authorization-type NONE \
-  >/dev/null
-
-# GET /api/health: Lambda 統合
-aws apigateway put-integration \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${HEALTH_RESOURCE_ID}" \
-  --http-method GET \
-  --type AWS_PROXY \
-  --integration-http-method POST \
-  --uri "${INTEGRATION_URI}" \
-  >/dev/null
-
-# GET /api/projects: Cognito 認証あり
-aws apigateway delete-method \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${PROJECTS_RESOURCE_ID}" \
-  --http-method GET \
-  >/dev/null 2>&1 || true
-
-# GET /api/projects: Cognito 認証あり
-aws apigateway put-method \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${PROJECTS_RESOURCE_ID}" \
-  --http-method GET \
-  --authorization-type COGNITO_USER_POOLS \
-  --authorizer-id "${AUTHORIZER_ID}" \
-  >/dev/null
-
-# GET /api/projects: Lambda 統合
-aws apigateway put-integration \
-  --rest-api-id "${API_ID}" \
-  --resource-id "${PROJECTS_RESOURCE_ID}" \
-  --http-method GET \
-  --type AWS_PROXY \
-  --integration-http-method POST \
-  --uri "${INTEGRATION_URI}" \
-  >/dev/null
-
-# API Gateway が Lambda を呼び出せるように権限を設定
+# Lamdbda 関数への API Gateway からの呼び出しを許可するための権限設定
+# 既存の権限を削除してから再作成する (冪等性の確保)
 aws lambda remove-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
   >/dev/null 2>&1 || true
 
-# API Gateway が Lambda を呼び出せるように権限を設定
+# API Gateway から Lambda 関数を呼び出すための権限を追加
+# --function-name には Lambda 関数の名前を指定
+# --source-arn には API Gateway の ARN を指定。
+# --action には lambda:InvokeFunction を指定して、API Gateway が Lambda 関数を呼び出すことを許可する。
+# --principal には apigateway.amazonaws.com を指定して、API Gateway サービスからの呼び出しを許可する。
+# API Gateway の ARN は、arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage_name}/{http_method}/{resource_path} という形式になる。
 aws lambda add-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
   --action lambda:InvokeFunction \
   --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:${AWS_REGION}:${ACCOUNT_ID}:${API_ID}/*/*/*" \
+  --source-arn "arn:aws:execute-api:${AWS_REGION}:${AWS_ACCOUNT_ID}:${API_ID}/*/*/*" \
   >/dev/null
 
-# API をデプロイ
+# API をデプロイして変更を反映
 aws apigateway create-deployment \
   --rest-api-id "${API_ID}" \
   --stage-name "${STAGE_NAME}" \
   >/dev/null
 
-# API のエンドポイント URL を SSM パラメータストアに保存
-API_BASE_URL_HOST="http://localhost:4566/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
-API_BASE_URL_INTERNAL="http://floci:4566/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
+# API URL の構築と SSM パラメータへの保存
+API_BASE_URL_HOST="${AWS_EDGE_HOST_URL}/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
+API_BASE_URL_INTERNAL="${AWS_EDGE_INTERNAL_URL}/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
 
-# API ID とエンドポイント URL を SSM パラメータストアに保存
-aws ssm put-parameter \
-  --name "${PARAMETER_PREFIX}/api-id" \
-  --type String \
-  --value "${API_ID}" \
-  --overwrite \
-  >/dev/null
+put_ssm_parameter "${PARAMETER_PREFIX}/api-id" "${API_ID}"
+put_ssm_parameter "${PARAMETER_PREFIX}/api-base-url-host" "${API_BASE_URL_HOST}"
+put_ssm_parameter "${PARAMETER_PREFIX}/api-base-url-internal" "${API_BASE_URL_INTERNAL}"
 
-# API のエンドポイント URL を SSM パラメータストアに保存
-aws ssm put-parameter \
-  --name "${PARAMETER_PREFIX}/api-base-url-host" \
-  --type String \
-  --value "${API_BASE_URL_HOST}" \
-  --overwrite \
-  >/dev/null
-
-# API のエンドポイント URL を SSM パラメータストアに保存
-aws ssm put-parameter \
-  --name "${PARAMETER_PREFIX}/api-base-url-internal" \
-  --type String \
-  --value "${API_BASE_URL_INTERNAL}" \
-  --overwrite \
-  >/dev/null
-
-echo "[API Gateway] Route prepared: GET /api/health"
-echo "[API Gateway] Route prepared: GET /api/projects"
-echo "[API Gateway] Host URL: ${API_BASE_URL_HOST}"
-echo "[API Gateway] Initialization completed."
+log "API Gateway" "Route prepared: GET /api/health"
+log "API Gateway" "Route prepared: GET /api/projects"
+log "API Gateway" "Host URL: ${API_BASE_URL_HOST}"
+log "API Gateway" "Initialization completed."

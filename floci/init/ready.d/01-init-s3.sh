@@ -1,34 +1,39 @@
 #!/bin/sh
 set -eu
 
-PROJECT_NAME="${PROJECT_NAME:-music-app}"
-ENVIRONMENT="${ENVIRONMENT:-local}"
-AWS_REGION="${AWS_REGION:-ap-northeast-1}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/00-common.sh"
 
-FRONTEND_BUCKET="${PROJECT_NAME}-${ENVIRONMENT}-frontend"
-FILE_BUCKET="${PROJECT_NAME}-${ENVIRONMENT}-files"
-
-echo "[S3] Initialization started."
-
-# S3 作成スクリプト
+log "S3" "Initialization started."
+# S3 作成スクリプト関数
 create_bucket() {
-  BUCKET_NAME="$1"
+  bucket_name="$1"
 
-  if aws s3api head-bucket --bucket "${BUCKET_NAME}" >/dev/null 2>&1; then
-    echo "[S3] Bucket already exists: ${BUCKET_NAME}"
+  # AWS CLI の head-bucket コマンドでバケットの存在を確認し、存在しない場合に作成する。
+  if aws s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
+    log "S3" "Bucket already exists: ${bucket_name}"
+    return
+  fi
+
+  # S3 バケットの作成。リージョンによってコマンドが異なるため、条件分岐で対応する。
+  if [ "${AWS_REGION}" = "us-east-1" ]; then
+    aws s3api create-bucket \
+      --bucket "${bucket_name}" \
+      --region "${AWS_REGION}" \
+      >/dev/null
   else
     aws s3api create-bucket \
-      --bucket "${BUCKET_NAME}" \
+      --bucket "${bucket_name}" \
       --region "${AWS_REGION}" \
       --create-bucket-configuration "LocationConstraint=${AWS_REGION}" \
       >/dev/null
-
-    echo "[S3] Bucket created: ${BUCKET_NAME}"
   fi
+
+  log "S3" "Bucket created: ${bucket_name}"
 }
 
-# フロントエンド用とファイル保存用のバケットを作成
+# S3 バケットの作成
 create_bucket "${FRONTEND_BUCKET}"
 create_bucket "${FILE_BUCKET}"
 
-echo "[S3] Initialization completed."
+log "S3" "Initialization completed."

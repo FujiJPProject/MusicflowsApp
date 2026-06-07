@@ -1,21 +1,34 @@
 #!/bin/sh
 set -eu
 
-PROJECT_NAME="${PROJECT_NAME:-music-app}"
-ENVIRONMENT="${ENVIRONMENT:-local}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/00-common.sh"
 
-SECRET_NAME="${PROJECT_NAME}/${ENVIRONMENT}/db"
+DB_HOST="${DB_HOST:-postgres}"
+DB_PORT="${DB_PORT:-5432}"
+DB_NAME="${DB_NAME:-music_app}"
+DB_USERNAME="${DB_USERNAME:-app_user}"
+DB_PASSWORD="${DB_PASSWORD:-app_password}"
 
-# データベース接続情報を Secrets Manager に保存
-SECRET_VALUE='{
-  "host": "postgres",
-  "port": "5432",
-  "dbname": "music_app",
-  "username": "app_user",
-  "password": "app_password"
-}'
+# DB接続情報を JSON 形式でシークレットに保存するための値を生成
+# ここでは、Python を使って環境変数から JSON 文字列を生成している。
+# これにより、Secrets Manager に保存するシークレットの値が一貫した形式で管理される。
+SECRET_VALUE="$(DB_HOST="${DB_HOST}" DB_PORT="${DB_PORT}" DB_NAME="${DB_NAME}" \
+  DB_USERNAME="${DB_USERNAME}" DB_PASSWORD="${DB_PASSWORD}" python3 - <<'PY'
+import json
+import os
 
-echo "[Secrets Manager] Initialization started."
+print(json.dumps({
+    "host": os.environ["DB_HOST"],
+    "port": os.environ["DB_PORT"],
+    "dbname": os.environ["DB_NAME"],
+    "username": os.environ["DB_USERNAME"],
+    "password": os.environ["DB_PASSWORD"],
+}))
+PY
+)"
+
+log "Secrets Manager" "Initialization started."
 
 # シークレットが既に存在するか確認
 if aws secretsmanager describe-secret \
@@ -28,7 +41,7 @@ if aws secretsmanager describe-secret \
     --secret-string "${SECRET_VALUE}" \
     >/dev/null
 
-  echo "[Secrets Manager] Secret updated: ${SECRET_NAME}"
+  log "Secrets Manager" "Secret updated: ${SECRET_NAME}"
 else
   # シークレットが存在しない場合は新規作成
   aws secretsmanager create-secret \
@@ -36,7 +49,7 @@ else
     --secret-string "${SECRET_VALUE}" \
     >/dev/null
 
-  echo "[Secrets Manager] Secret created: ${SECRET_NAME}"
+  log "Secrets Manager" "Secret created: ${SECRET_NAME}"
 fi
 
-echo "[Secrets Manager] Initialization completed."
+log "Secrets Manager" "Initialization completed."
