@@ -7,27 +7,27 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 log "Lambda Event Source" "Initialization started."
 
 # SQS キューの URLの取得
-QUEUE_URL="$(aws sqs get-queue-url \
+QUEUE_URL="$(aws_local sqs get-queue-url \
   --queue-name "${QUEUE_NAME}" \
   --query QueueUrl \
   --output text)"
 
 # SQS キューの ARN の取得
-QUEUE_ARN="$(aws sqs get-queue-attributes \
+QUEUE_ARN="$(aws_local sqs get-queue-attributes \
   --queue-url "${QUEUE_URL}" \
   --attribute-names QueueArn \
   --query Attributes.QueueArn \
   --output text)"
 
 # Lambda 関数と SQS キューのイベントソースマッピングの作成 (存在しない場合)
-MAPPING_ID="$(aws lambda list-event-source-mappings \
+MAPPING_ID="$(aws_local lambda list-event-source-mappings \
   --function-name "${WORKER_FUNCTION_NAME}" \
   --event-source-arn "${QUEUE_ARN}" \
   --query "EventSourceMappings[0].UUID" \
   --output text)"
 
 if is_missing_aws_value "${MAPPING_ID}"; then
-  aws lambda create-event-source-mapping \
+  aws_local lambda create-event-source-mapping \
     --function-name "${WORKER_FUNCTION_NAME}" \
     --event-source-arn "${QUEUE_ARN}" \
     --batch-size 10 \

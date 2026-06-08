@@ -31,12 +31,12 @@ PY
 log "Secrets Manager" "Initialization started."
 
 # シークレットが既に存在するか確認
-if aws secretsmanager describe-secret \
+if aws_local secretsmanager describe-secret \
   --secret-id "${SECRET_NAME}" \
   >/dev/null 2>&1; then
 
   # シークレットが存在する場合は値を更新
-  aws secretsmanager put-secret-value \
+  aws_local secretsmanager put-secret-value \
     --secret-id "${SECRET_NAME}" \
     --secret-string "${SECRET_VALUE}" \
     >/dev/null
@@ -44,7 +44,7 @@ if aws secretsmanager describe-secret \
   log "Secrets Manager" "Secret updated: ${SECRET_NAME}"
 else
   # シークレットが存在しない場合は新規作成
-  aws secretsmanager create-secret \
+  aws_local secretsmanager create-secret \
     --name "${SECRET_NAME}" \
     --secret-string "${SECRET_VALUE}" \
     >/dev/null

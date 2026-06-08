@@ -7,7 +7,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 log "SQS" "Initialization started."
 
 # SQS キュー作成 
-QUEUE_URL="$(aws sqs create-queue \
+QUEUE_URL="$(aws_local sqs create-queue \
   --queue-name "${QUEUE_NAME}" \
   --query QueueUrl \
   --output text)"

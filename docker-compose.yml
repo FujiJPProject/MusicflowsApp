@@ -23,7 +23,8 @@ services:
 
   # Flociコンテナ(AWSローカルエミュレーター)
   floci:
-    image: floci/floci:latest
+    # ready.d 内で AWS CLI を利用するため compat イメージを使用
+    image: floci/floci:latest-compat
     container_name: music-app-floci
     ports:
       - "4566:4566"
@@ -32,8 +33,29 @@ services:
       FLOCI_HOSTNAME: floci
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "120"
+
+      # AWS CLI / Lambda 実行コンテナが利用するローカル設定
+      AWS_REGION: ap-northeast-1
+      AWS_DEFAULT_REGION: ap-northeast-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+
+      # 初期化スクリプトで利用する共通値
+      PROJECT_NAME: music-app
+      ENVIRONMENT: local
     volumes:
+      # Floci の状態保存用ボリューム
       - floci_data:/app/data
+
+      # 起動後に自動実行するスクリプトをマウント
+      - ./floci/init/ready.d:/etc/floci/init/ready.d:ro
+
+      # React が読み込むランタイム設定の出力先
+      - ./frontend/public/config:/app/export/frontend-config
+
+      # Lambda 実行用コンテナを Floci から起動するために必要
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - music-app-network
 

@@ -69,19 +69,49 @@ is_missing_aws_value() {
   [ -z "$1" ] || [ "$1" = "None" ]
 }
 
+# AWS CLI をローカルエンドポイントに対して実行するための関数
+# 1. 実 AWS に誤って向く事故を防げる
+# 2. API Gateway URL のような http://... 文字列を安全に SSM へ保存できる
+aws_local() {
+  AWS_CLI_FOLLOW_URLPARAM=false \
+  aws --endpoint-url "${AWS_EDGE_HOST_URL}" \
+      --region "${AWS_REGION}" \
+      "$@"
+}
+
 # AWS CLI を使って SSM パラメータを取得する関数
 get_ssm_parameter() {
-  aws ssm get-parameter \
+  aws_local ssm get-parameter \
     --name "$1" \
     --query Parameter.Value \
     --output text
 }
 
 put_ssm_parameter() {
-  aws ssm put-parameter \
-    --name "$1" \
-    --type String \
-    --value "$2" \
-    --overwrite \
+  name="$1"
+  value="$2"
+
+# AWS CLI の put-parameter コマンドは、コマンドライン引数で直接値を渡すと、URL エンコードされてしまう。
+# 例えば、http://localhost:4566 のような文字列を渡すと、http%3A%2F%2Flocalhost%3A4566 のように保存されてしまう。
+#これを防ぐために、Python の json モジュールを使って、JSON 形式でパラメータを渡す方法を取る。
+  json_payload="$(python3 - "${name}" "${value}" <<'PY'
+import json
+import sys
+
+name = sys.argv[1]
+value = sys.argv[2]
+
+print(json.dumps({
+    "Name": name,
+    "Type": "String",
+    "Value": value,
+    "Overwrite": True
+}))
+PY
+)"
+
+  aws_local ssm put-parameter \
+    --cli-input-json "${json_payload}" \
     >/dev/null
 }
+

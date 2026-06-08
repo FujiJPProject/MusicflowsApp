@@ -83,14 +83,14 @@ create_or_update_function() {
   zip_path="$2"
 
   # すでに Lambda 関数が存在するか確認し、存在する場合はコードを更新、存在しない場合は新規作成
-  if aws lambda get-function --function-name "${function_name}" >/dev/null 2>&1; then
-    aws lambda update-function-code \
+  if aws_local lambda get-function --function-name "${function_name}" >/dev/null 2>&1; then
+    aws_local lambda update-function-code \
       --function-name "${function_name}" \
       --zip-file "fileb://${zip_path}" \
       >/dev/null
     log "Lambda" "Function code updated: ${function_name}"
   else
-    aws lambda create-function \
+    aws_local lambda create-function \
       --function-name "${function_name}" \
       --runtime nodejs22.x \
       --role "${LAMBDA_ROLE_ARN}" \

@@ -12,12 +12,12 @@ API_FUNCTION_ARN="arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${API_
 INTEGRATION_URI="arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${API_FUNCTION_ARN}/invocations"
 
 #   Rest API の作成 (存在しない場合)
-API_ID="$(aws apigateway get-rest-apis \
+API_ID="$(aws_local apigateway get-rest-apis \
   --query "items[?name=='${REST_API_NAME}'].id | [0]" \
   --output text)"
 
 if is_missing_aws_value "${API_ID}"; then
-  API_ID="$(aws apigateway create-rest-api \
+  API_ID="$(aws_local apigateway create-rest-api \
     --name "${REST_API_NAME}" \
     --query id \
     --output text)"
@@ -27,7 +27,7 @@ else
 fi
 
 # ルート Resource ID の取得
-ROOT_RESOURCE_ID="$(aws apigateway get-resources \
+ROOT_RESOURCE_ID="$(aws_local apigateway get-resources \
   --rest-api-id "${API_ID}" \
   --query "items[?path=='/'].id | [0]" \
   --output text)"
@@ -41,13 +41,13 @@ get_or_create_resource() {
     # フルパス (例: "/api", "/api/health", "/api/projects")
   full_path="$3"
 
-  resource_id="$(aws apigateway get-resources \
+  resource_id="$(aws_local apigateway get-resources \
     --rest-api-id "${API_ID}" \
     --query "items[?path=='${full_path}'].id | [0]" \
     --output text)"
 
   if is_missing_aws_value "${resource_id}"; then
-    resource_id="$(aws apigateway create-resource \
+    resource_id="$(aws_local apigateway create-resource \
       --rest-api-id "${API_ID}" \
       --parent-id "${parent_id}" \
       --path-part "${path_part}" \
@@ -63,14 +63,14 @@ configure_public_get_route() {
   resource_id="$1"
 
   # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
-  aws apigateway delete-method \
+  aws_local apigateway delete-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
     >/dev/null 2>&1 || true
 
   # 認証なしの GET メソッドを作成
-  aws apigateway put-method \
+  aws_local apigateway put-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
@@ -79,7 +79,7 @@ configure_public_get_route() {
 
   # 認証なしの GET メソッドに Lambda 統合を設定
   # API Gateway で Lambda プロキシ統合を使用する場合、統合タイプは AWS_PROXY となり、統合 HTTP メソッドは POST になります。
-  aws apigateway put-integration \
+  aws_local apigateway put-integration \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
@@ -95,14 +95,14 @@ configure_cognito_get_route() {
   authorizer_id="$2"
 
   # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
-  aws apigateway delete-method \
+  aws_local apigateway delete-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
     >/dev/null 2>&1 || true
 
   # Cognito 認証付きの GET メソッドを作成
-  aws apigateway put-method \
+  aws_local apigateway put-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
@@ -111,7 +111,7 @@ configure_cognito_get_route() {
     >/dev/null
 
   # Cognito 認証付きの GET メソッドに Lambda 統合を設定
-  aws apigateway put-integration \
+  aws_local apigateway put-integration \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
     --http-method GET \
@@ -127,13 +127,13 @@ HEALTH_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "health" "/api
 PROJECTS_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "projects" "/api/projects")"
 
 # Cognito Authorizer の作成 (存在しない場合)
-AUTHORIZER_ID="$(aws apigateway get-authorizers \
+AUTHORIZER_ID="$(aws_local apigateway get-authorizers \
   --rest-api-id "${API_ID}" \
   --query "items[?name=='${AUTHORIZER_NAME}'].id | [0]" \
   --output text)"
 
 if is_missing_aws_value "${AUTHORIZER_ID}"; then
-  AUTHORIZER_ID="$(aws apigateway create-authorizer \
+  AUTHORIZER_ID="$(aws_local apigateway create-authorizer \
     --rest-api-id "${API_ID}" \
     --name "${AUTHORIZER_NAME}" \
     --type COGNITO_USER_POOLS \
@@ -150,9 +150,9 @@ fi
 configure_public_get_route "${HEALTH_RESOURCE_ID}"
 configure_cognito_get_route "${PROJECTS_RESOURCE_ID}" "${AUTHORIZER_ID}"
 
-# Lamdbda 関数への API Gateway からの呼び出しを許可するための権限設定
+# Lambda 関数への API Gateway からの呼び出しを許可するための権限設定
 # 既存の権限を削除してから再作成する (冪等性の確保)
-aws lambda remove-permission \
+aws_local lambda remove-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
   >/dev/null 2>&1 || true
@@ -163,7 +163,7 @@ aws lambda remove-permission \
 # --action には lambda:InvokeFunction を指定して、API Gateway が Lambda 関数を呼び出すことを許可する。
 # --principal には apigateway.amazonaws.com を指定して、API Gateway サービスからの呼び出しを許可する。
 # API Gateway の ARN は、arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage_name}/{http_method}/{resource_path} という形式になる。
-aws lambda add-permission \
+aws_local lambda add-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
   --action lambda:InvokeFunction \
@@ -172,7 +172,7 @@ aws lambda add-permission \
   >/dev/null
 
 # API をデプロイして変更を反映
-aws apigateway create-deployment \
+aws_local apigateway create-deployment \
   --rest-api-id "${API_ID}" \
   --stage-name "${STAGE_NAME}" \
   >/dev/null

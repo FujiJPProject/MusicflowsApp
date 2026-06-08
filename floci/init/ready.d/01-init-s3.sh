@@ -10,19 +10,19 @@ create_bucket() {
   bucket_name="$1"
 
   # AWS CLI の head-bucket コマンドでバケットの存在を確認し、存在しない場合に作成する。
-  if aws s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
+  if aws_local s3api head-bucket --bucket "${bucket_name}" >/dev/null 2>&1; then
     log "S3" "Bucket already exists: ${bucket_name}"
     return
   fi
 
   # S3 バケットの作成。リージョンによってコマンドが異なるため、条件分岐で対応する。
   if [ "${AWS_REGION}" = "us-east-1" ]; then
-    aws s3api create-bucket \
+    aws_local s3api create-bucket \
       --bucket "${bucket_name}" \
       --region "${AWS_REGION}" \
       >/dev/null
   else
-    aws s3api create-bucket \
+    aws_local s3api create-bucket \
       --bucket "${bucket_name}" \
       --region "${AWS_REGION}" \
       --create-bucket-configuration "LocationConstraint=${AWS_REGION}" \
