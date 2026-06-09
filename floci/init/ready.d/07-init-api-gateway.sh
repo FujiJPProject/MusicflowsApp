@@ -90,6 +90,7 @@ configure_public_get_route() {
 }
 
 # Cognito 認証付き GET Route 設定関数
+# Flociは認証機能がそもそも実装されていないっぽい
 configure_cognito_get_route() {
   resource_id="$1"
   authorizer_id="$2"
@@ -172,9 +173,22 @@ aws_local lambda add-permission \
   >/dev/null
 
 # API をデプロイして変更を反映
-aws_local apigateway create-deployment \
+DEPLOYMENT_ID="$(aws_local apigateway create-deployment \
+  --rest-api-id "${API_ID}" \
+  --query id \
+  --output text)"
+
+# Floci では create-deployment --stage-name だけでは stage が作成されない場合があるため、stage を明示的に作成し直すようにしている。
+aws_local apigateway delete-stage \
   --rest-api-id "${API_ID}" \
   --stage-name "${STAGE_NAME}" \
+  >/dev/null 2>&1 || true
+
+# ステージの作成
+aws_local apigateway create-stage \
+  --rest-api-id "${API_ID}" \
+  --stage-name "${STAGE_NAME}" \
+  --deployment-id "${DEPLOYMENT_ID}" \
   >/dev/null
 
 # API URL の構築と SSM パラメータへの保存
