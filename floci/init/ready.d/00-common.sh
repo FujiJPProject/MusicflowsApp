@@ -30,7 +30,6 @@ PARAMETER_PREFIX="/${PROJECT_NAME}/${ENVIRONMENT}"
 
 # --------------------------S3・SQS・Secrets Manager・Cognito の名称定義---------------------------------
 
-FRONTEND_BUCKET="${PROJECT_NAME}-${ENVIRONMENT}-frontend" # React 配信用ファイル
 FILE_BUCKET="${PROJECT_NAME}-${ENVIRONMENT}-files" # 楽曲・画像・プロジェクトデータ
 QUEUE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-music-jobs" # 楽曲変換ジョブのキュー
 SECRET_NAME="${PROJECT_NAME}/${ENVIRONMENT}/db" # DB接続情報

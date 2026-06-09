@@ -47,7 +47,6 @@
 
  | サービス                 | 作成するリソース                            | 用途                             |
 | -------------------- | ----------------------------------- | ------------------------------ |
-| S3                   | `music-app-local-frontend`          | React 配信用ファイル保存先の想定            |
 | S3                   | `music-app-local-files`             | 楽曲・音声・プロジェクトファイル保存             |
 | SQS                  | `music-app-local-music-jobs`        | 音源書き出し等の非同期処理                  |
 | SSM                  | `/music-app/local/app-name`         | アプリ名設定                         |
