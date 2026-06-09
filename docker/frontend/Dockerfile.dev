@@ -1,0 +1,20 @@
+# node:24-bookworm をベースイメージとして使用
+FROM node:24-bookworm
+
+# 作業ディレクトリを /app に設定
+WORKDIR /app
+
+# ホットリロードのため、node_modules をボリュームマウント
+COPY frontend/package*.json ./
+
+# 依存関係のインストール
+RUN npm install
+
+# アプリケーションのソースコードをコピー
+COPY frontend/ ./
+
+# 開発サーバーが使用するポートを公開
+EXPOSE 5173
+
+# 開発サーバーを起動
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
