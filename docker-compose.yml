@@ -26,6 +26,8 @@ services:
     # ready.d 内で AWS CLI を利用するため compat イメージを使用
     image: floci/floci:latest-compat
     container_name: music-app-floci
+    user: root
+    privileged: true # Docker-in-Docker を利用するために必要
     ports:
       - "4566:4566"
     environment:
