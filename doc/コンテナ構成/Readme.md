@@ -1,13 +1,5 @@
 
-## 構成の説明
-
- - **services**：Docker Compose で起動するアプリケーション単位のコンテナ定義
- - **volumes**
-   - コンテナからアクセスできる保存領域やホスト側ディレクトリをマウントする設定
-   - 名前付きボリュームは Compose のトップレベル volumes に定義して再利用できる
- - **networks**：コンテナ同士を接続させる仕組み
-   - ホスト→コンテナ：localhost:ポート番号
-   - コンテナ→コンテナ：サービス名:ポート番号
+# コンテナ構成
 
 ## 詳細
 
@@ -66,6 +58,42 @@
 
 ### フォルダ構成
 
+```+music-app/
+├─ docker-compose.yml
+├─ docker/
+│  ├─ frontend/              React実行用コンテナ
+│  │  └─ Dockerfile.dev
+│  ├─ backend/
+│     ├─ Dockerfile.dev　　　Spring boot実行用コンテナ
+│     └─ Dockerfile.lambda
+├─ db/
+│  ├─ init/                   DB初期化実行SQL
+├─ frontend/                  React プロジェクト
+├─ backend/                   Spring Boot プロジェクト
+├─ floci/                     
+│  ├─ init/                   Floci 初期化シェル
+│  │  ├─ 01-init-s3.sh
+│  │  ├─ 02-init-sqs.sh
+│  │  ├─ 03-init-ssm.sh
+│  │  ├─ 04-init-secretsmanager.sh
+│  │  ├─ 05-init-cognito.sh
+│  │  ├─ 06-init-lambda.sh
+│  │  ├─ 07-init-api-gateway.sh
+│  │  ├─ 08-connect-sqs-lambda.sh
+│  │  └─ 09-export-frontend-config.sh
+│  └─ dist/
+│     └─ frontend-config.json
+└─ README.md
+```
 
+## 補足()
+
+ - **services**：Docker Compose で起動するアプリケーション単位のコンテナ定義
+ - **volumes**
+   - コンテナからアクセスできる保存領域やホスト側ディレクトリをマウントする設定
+   - 名前付きボリュームは Compose のトップレベル volumes に定義して再利用できる
+ - **networks**：コンテナ同士を接続させる仕組み
+   - ホスト→コンテナ：localhost:ポート番号
+   - コンテナ→コンテナ：サービス名:ポート番号
 
 ※環境変数を変更してもすでに既存DBには反映されないためボリュームも削除する必要がある
