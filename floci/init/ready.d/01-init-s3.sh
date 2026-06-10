@@ -33,7 +33,6 @@ create_bucket() {
 }
 
 # S3 バケットの作成
-create_bucket "${FRONTEND_BUCKET}"
 create_bucket "${FILE_BUCKET}"
 
 log "S3" "Initialization completed."

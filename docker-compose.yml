@@ -46,6 +46,10 @@ services:
       # 初期化スクリプトで利用する共通値
       PROJECT_NAME: music-app
       ENVIRONMENT: local
+
+      # React開発サーバーのCORS許可用
+      FRONTEND_ORIGIN: http://localhost:5173
+
     volumes:
       # Floci の状態保存用ボリューム
       - floci_data:/app/data
@@ -61,9 +65,24 @@ services:
     networks:
       - music-app-network
 
+  # React開発サーバーコンテナ
+  frontend:
+      build:
+        context: .
+        dockerfile: docker/frontend/Dockerfile.dev
+      container_name: music-app-frontend
+      ports:
+        - "5173:5173"
+      volumes:
+        - ./frontend:/app
+        - frontend_node_modules:/app/node_modules
+      networks:
+        - music-app-network
+
 volumes:
   postgres_data:
   floci_data:
+  frontend_node_modules:
 
 networks:
   music-app-network:
