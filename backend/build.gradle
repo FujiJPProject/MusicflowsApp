@@ -1,0 +1,63 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.0.6'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.jws'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+
+	// Lambda + API Gateway 連携用
+	implementation "com.amazonaws.serverless:aws-serverless-java-container-springboot4:3.0.0"
+
+    // Lambda Event型を使う場合
+	implementation "com.amazonaws:aws-lambda-java-events:3.16.1"
+
+    // AWS SDK v2
+	implementation platform("software.amazon.awssdk:bom:2.41.32")
+	implementation "software.amazon.awssdk:s3"
+	implementation "software.amazon.awssdk:ssm"
+	implementation "software.amazon.awssdk:secretsmanager"
+	implementation "software.amazon.awssdk:sqs"
+
+	developmentOnly 'org.springframework.boot:spring-boot-devtools'
+	runtimeOnly 'org.postgresql:postgresql'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+// Lambda デプロイ用の ZIP を作成するタスク
+tasks.register('buildLambdaZip', Zip) {
+    dependsOn compileJava, processResources
+
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+
+    from sourceSets.main.output
+
+    archiveFileName = 'musicflows-lambda.zip'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+}

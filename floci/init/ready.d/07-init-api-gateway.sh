@@ -6,12 +6,10 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 log "API Gateway" "Initialization started."
 
-USER_POOL_ID="$(get_ssm_parameter "${PARAMETER_PREFIX}/cognito-user-pool-id")"
-USER_POOL_ARN="arn:aws:cognito-idp:${AWS_REGION}:${AWS_ACCOUNT_ID}:userpool/${USER_POOL_ID}"
 API_FUNCTION_ARN="arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${API_FUNCTION_NAME}"
 INTEGRATION_URI="arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${API_FUNCTION_ARN}/invocations"
 
-#   Rest API の作成 (存在しない場合)
+# REST API の作成または取得
 API_ID="$(aws_local apigateway get-rest-apis \
   --query "items[?name=='${REST_API_NAME}'].id | [0]" \
   --output text)"
@@ -32,13 +30,10 @@ ROOT_RESOURCE_ID="$(aws_local apigateway get-resources \
   --query "items[?path=='/'].id | [0]" \
   --output text)"
 
-# API Gateway の Resource を 存在すれば再利用し、なければ作成する 関数
+# API Gateway の Resource を存在すれば再利用し、なければ作成する関数
 get_or_create_resource() {
-  # 親 Resource ID (例: ルートリソースの ID, /api のリソース ID)
   parent_id="$1"
-  # パスの一部 (例: "api", "health", "projects")
   path_part="$2"
-    # フルパス (例: "/api", "/api/health", "/api/projects")
   full_path="$3"
 
   resource_id="$(aws_local apigateway get-resources \
@@ -53,117 +48,62 @@ get_or_create_resource() {
       --path-part "${path_part}" \
       --query id \
       --output text)"
+    log "API Gateway" "Resource created: ${full_path}" >&2
+  else
+    log "API Gateway" "Resource already exists: ${full_path}" >&2
   fi
 
   printf '%s\n' "${resource_id}"
 }
 
-# 認証なし GET Route 設定関数
-configure_public_get_route() {
+# Lambda プロキシ統合用の ANY Route を設定する関数
+configure_lambda_proxy_any_route() {
   resource_id="$1"
 
-  # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
+  # 既存の ANY メソッドを削除してから再作成する。
+  # これにより、スクリプトを複数回実行しても設定のズレが残りにくくなる。
   aws_local apigateway delete-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
-    --http-method GET \
+    --http-method ANY \
     >/dev/null 2>&1 || true
 
-  # 認証なしの GET メソッドを作成
+  # 認証は API Gateway ではなく Spring Security 側で制御する。
+  # Floci の Cognito Authorizer 互換性に依存しない構成にするため、ここでは NONE にする。
   aws_local apigateway put-method \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
-    --http-method GET \
+    --http-method ANY \
     --authorization-type NONE \
     >/dev/null
 
-  # 認証なしの GET メソッドに Lambda 統合を設定
-  # API Gateway で Lambda プロキシ統合を使用する場合、統合タイプは AWS_PROXY となり、統合 HTTP メソッドは POST になります。
+  # Spring Boot Lambda へ Lambda プロキシ統合する。
+  # API Gateway の Lambda プロキシ統合では integration-http-method は POST を指定する。
   aws_local apigateway put-integration \
     --rest-api-id "${API_ID}" \
     --resource-id "${resource_id}" \
-    --http-method GET \
+    --http-method ANY \
     --type AWS_PROXY \
     --integration-http-method POST \
     --uri "${INTEGRATION_URI}" \
     >/dev/null
+
+  log "API Gateway" "Route prepared: ANY /{proxy+}"
 }
 
-# Cognito 認証付き GET Route 設定関数
-# Flociは認証機能がそもそも実装されていないっぽい
-configure_cognito_get_route() {
-  resource_id="$1"
-  authorizer_id="$2"
-
-  # 既存の GET メソッドを削除してから再作成する (冪等性の確保)
-  aws_local apigateway delete-method \
-    --rest-api-id "${API_ID}" \
-    --resource-id "${resource_id}" \
-    --http-method GET \
-    >/dev/null 2>&1 || true
-
-  # Cognito 認証付きの GET メソッドを作成
-  aws_local apigateway put-method \
-    --rest-api-id "${API_ID}" \
-    --resource-id "${resource_id}" \
-    --http-method GET \
-    --authorization-type COGNITO_USER_POOLS \
-    --authorizer-id "${authorizer_id}" \
-    >/dev/null
-
-  # Cognito 認証付きの GET メソッドに Lambda 統合を設定
-  aws_local apigateway put-integration \
-    --rest-api-id "${API_ID}" \
-    --resource-id "${resource_id}" \
-    --http-method GET \
-    --type AWS_PROXY \
-    --integration-http-method POST \
-    --uri "${INTEGRATION_URI}" \
-    >/dev/null
-}
-
-# Resourceの作成
-API_RESOURCE_ID="$(get_or_create_resource "${ROOT_RESOURCE_ID}" "api" "/api")"
-HEALTH_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "health" "/api/health")"
-PROJECTS_RESOURCE_ID="$(get_or_create_resource "${API_RESOURCE_ID}" "projects" "/api/projects")"
-
-# Cognito Authorizer の作成 (存在しない場合)
-AUTHORIZER_ID="$(aws_local apigateway get-authorizers \
-  --rest-api-id "${API_ID}" \
-  --query "items[?name=='${AUTHORIZER_NAME}'].id | [0]" \
-  --output text)"
-
-if is_missing_aws_value "${AUTHORIZER_ID}"; then
-  AUTHORIZER_ID="$(aws_local apigateway create-authorizer \
-    --rest-api-id "${API_ID}" \
-    --name "${AUTHORIZER_NAME}" \
-    --type COGNITO_USER_POOLS \
-    --provider-arns "${USER_POOL_ARN}" \
-    --identity-source "method.request.header.Authorization" \
-    --query id \
-    --output text)"
-  log "API Gateway" "Cognito authorizer created: ${AUTHORIZER_NAME}"
-else
-  log "API Gateway" "Cognito authorizer already exists: ${AUTHORIZER_NAME}"
-fi
-
-# Route の設定
-configure_public_get_route "${HEALTH_RESOURCE_ID}"
-configure_cognito_get_route "${PROJECTS_RESOURCE_ID}" "${AUTHORIZER_ID}"
+# /{proxy+} Resource を作成する。
+# Spring Boot 側の Controller にルーティングを集約するため、
+# API Gateway 側では個別の /api/health や /api/projects を作らない。
+PROXY_RESOURCE_ID="$(get_or_create_resource "${ROOT_RESOURCE_ID}" "{proxy+}" "/{proxy+}")"
+configure_lambda_proxy_any_route "${PROXY_RESOURCE_ID}"
 
 # Lambda 関数への API Gateway からの呼び出しを許可するための権限設定
-# 既存の権限を削除してから再作成する (冪等性の確保)
+# 既存の権限を削除してから再作成する。
 aws_local lambda remove-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
   >/dev/null 2>&1 || true
 
-# API Gateway から Lambda 関数を呼び出すための権限を追加
-# --function-name には Lambda 関数の名前を指定
-# --source-arn には API Gateway の ARN を指定。
-# --action には lambda:InvokeFunction を指定して、API Gateway が Lambda 関数を呼び出すことを許可する。
-# --principal には apigateway.amazonaws.com を指定して、API Gateway サービスからの呼び出しを許可する。
-# API Gateway の ARN は、arn:aws:execute-api:{region}:{account_id}:{api_id}/{stage_name}/{http_method}/{resource_path} という形式になる。
 aws_local lambda add-permission \
   --function-name "${API_FUNCTION_NAME}" \
   --statement-id "allow-api-gateway-invoke" \
@@ -178,13 +118,13 @@ DEPLOYMENT_ID="$(aws_local apigateway create-deployment \
   --query id \
   --output text)"
 
-# Floci では create-deployment --stage-name だけでは stage が作成されない場合があるため、stage を明示的に作成し直すようにしている。
+# Floci では create-deployment --stage-name だけでは stage が作成されない場合があるため、
+# stage を明示的に作成し直す。
 aws_local apigateway delete-stage \
   --rest-api-id "${API_ID}" \
   --stage-name "${STAGE_NAME}" \
   >/dev/null 2>&1 || true
 
-# ステージの作成
 aws_local apigateway create-stage \
   --rest-api-id "${API_ID}" \
   --stage-name "${STAGE_NAME}" \
@@ -192,6 +132,7 @@ aws_local apigateway create-stage \
   >/dev/null
 
 # API URL の構築と SSM パラメータへの保存
+# 09-export-frontend-config.sh がこの値を取得して React 用 config JSON を出力する。
 API_BASE_URL_HOST="${AWS_EDGE_HOST_URL}/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
 API_BASE_URL_INTERNAL="${AWS_EDGE_INTERNAL_URL}/restapis/${API_ID}/${STAGE_NAME}/_user_request_"
 
@@ -199,7 +140,5 @@ put_ssm_parameter "${PARAMETER_PREFIX}/api-id" "${API_ID}"
 put_ssm_parameter "${PARAMETER_PREFIX}/api-base-url-host" "${API_BASE_URL_HOST}"
 put_ssm_parameter "${PARAMETER_PREFIX}/api-base-url-internal" "${API_BASE_URL_INTERNAL}"
 
-log "API Gateway" "Route prepared: GET /api/health"
-log "API Gateway" "Route prepared: GET /api/projects"
 log "API Gateway" "Host URL: ${API_BASE_URL_HOST}"
 log "API Gateway" "Initialization completed."

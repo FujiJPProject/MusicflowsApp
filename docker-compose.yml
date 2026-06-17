@@ -43,6 +43,13 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
 
+      # Spring Boot LambdaからDBへ接続するために合わせる
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: music_app
+      DB_USERNAME: app_user
+      DB_PASSWORD: app_password
+
       # 初期化スクリプトで利用する共通値
       PROJECT_NAME: music-app
       ENVIRONMENT: local
@@ -62,6 +69,14 @@ services:
 
       # Lambda 実行用コンテナを Floci から起動するために必要
       - /var/run/docker.sock:/var/run/docker.sock
+
+      # Spring Boot Lambdaの成果物をFloci初期化スクリプトから参照する
+      - ./backend/build/distributions:/app/lambda/springboot
+
+    # Flociが完全に起動してからFlociコンテナを起動するための依存関係
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - music-app-network
 
@@ -76,13 +91,45 @@ services:
       volumes:
         - ./frontend:/app
         - frontend_node_modules:/app/node_modules
+      depends_on:
+      - floci
       networks:
         - music-app-network
+    
+  # Spring Boot開発サーバーコンテナ
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.dev
+    container_name: music-app-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - gradle_cache:/home/gradle/.gradle
+    working_dir: /app
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: music_app
+      DB_USERNAME: app_user
+      DB_PASSWORD: app_password
+      AWS_REGION: ap-northeast-1
+      AWS_ENDPOINT_URL: http://floci:4566
+    depends_on:
+      postgres:
+        condition: service_healthy
+      floci:
+        condition: service_started
+    networks:
+      - music-app-network
 
 volumes:
   postgres_data:
   floci_data:
   frontend_node_modules:
+  gradle_cache:
 
 networks:
   music-app-network:
