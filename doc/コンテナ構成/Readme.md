@@ -3,6 +3,10 @@
 
 ## 詳細
 
+ - 目的
+   - インフラを構築できていなくてもAWS上にのっけた前提のソースコードをローカル上で最初から作成、テストできる
+   - ローカルでAWSの動きと連携したテストができるのでわざわざクラウド側で試す回数も減り、クラウド側を汚さずに済む
+
 ### 全体像
 
 ![全体像](./images/docker.drawio.png)
@@ -24,7 +28,9 @@
 
 ### Floci コンテナ
 
-**Floci**：ローカルPC上で AWS API に似た動きを再現するオープンソースの AWS エミュレーター
+**Floci**
+ - ローカルPC上で AWS API に似た動きを再現するオープンソースの AWS エミュレーター
+ - LocakStackというAWSが公式に提供しているエミュレータもあるが2026年3月
 
  - ソフトウェア：floci
    - コンテナ名：music-app-floci
@@ -34,6 +40,8 @@
      - ホスト名：app_user
      - ストレージモード：維持
      - 永続化するローカルパス：/app/data
+
+### Flociと初期化シェルの関係性
 
 ![構成](./images/floci.drawio.png)
 
@@ -47,11 +55,9 @@
 | Cognito              | `music-app-local-users`             | 認証用 User Pool                  |
 | Cognito              | `music-app-local-web-client`        | React 用 App Client             |
 | Cognito              | `local-user@example.com`            | ローカル確認用ユーザー                    |
-| Lambda               | `music-app-local-api-handler`       | API Gateway 疎通確認用の仮 API Lambda |
+| Lambda               | `music-app-local-api-handler`       | Spring boot API Lambda |
 | Lambda               | `music-app-local-music-job-worker`  | SQS 疎通確認用 Worker Lambda        |
 | API Gateway          | `music-app-local-api`               | React から呼び出す REST API          |
-| API Gateway          | `GET /api/health`                   | 認証なし API                       |
-| API Gateway          | `GET /api/projects`                 | Cognito 認証付き API               |
 | Event Source Mapping | SQS → Worker Lambda                 | 非同期処理連携                        |
 
 
