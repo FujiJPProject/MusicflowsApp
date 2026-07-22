@@ -38,15 +38,13 @@ USER_POOL_NAME="${PROJECT_NAME}-${ENVIRONMENT}-users" # ユーザー情報と認
 APP_CLIENT_NAME="${PROJECT_NAME}-${ENVIRONMENT}-web-client" # React が認証処理で使用
 # --------------------------S3・SQS・Secrets Manager・Cognito の名称定義---------------------------------
 
-
-
-
-
 API_FUNCTION_NAME="${PROJECT_NAME}-${ENVIRONMENT}-api-handler"
+API_FUNCTION_ALIAS_NAME="${API_FUNCTION_ALIAS_NAME:-live}"
 WORKER_FUNCTION_NAME="${PROJECT_NAME}-${ENVIRONMENT}-music-job-worker"
 REST_API_NAME="${PROJECT_NAME}-${ENVIRONMENT}-api"
 AUTHORIZER_NAME="${PROJECT_NAME}-${ENVIRONMENT}-cognito-authorizer"
 
+# ---------------- Lambda共通設定 ----------------
 LAMBDA_ROLE_ARN="${LAMBDA_ROLE_ARN:-arn:aws:iam::${AWS_ACCOUNT_ID}:role/lambda-role}"
 FRONTEND_CONFIG_OUTPUT_DIR="${FRONTEND_CONFIG_OUTPUT_DIR:-/app/export/frontend-config}"
 

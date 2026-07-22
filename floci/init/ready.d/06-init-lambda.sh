@@ -45,6 +45,51 @@ print(json.dumps(environment))
 PY
 }
 
+
+wait_api_function_updated() {
+  aws_local lambda wait function-updated-v2 \
+    --function-name "${API_FUNCTION_NAME}" \
+    >/dev/null 2>&1 || true
+}
+
+
+create_or_update_api_alias() {
+  function_version="$1"
+
+  if aws_local lambda get-alias \
+    --function-name "${API_FUNCTION_NAME}" \
+    --name "${API_FUNCTION_ALIAS_NAME}" \
+    >/dev/null 2>&1; then
+
+    aws_local lambda update-alias \
+      --function-name "${API_FUNCTION_NAME}" \
+      --name "${API_FUNCTION_ALIAS_NAME}" \
+      --function-version "${function_version}" \
+      >/dev/null
+
+    log "Lambda" "API alias updated: ${API_FUNCTION_ALIAS_NAME} -> version ${function_version}"
+  else
+    aws_local lambda create-alias \
+      --function-name "${API_FUNCTION_NAME}" \
+      --name "${API_FUNCTION_ALIAS_NAME}" \
+      --function-version "${function_version}" \
+      >/dev/null
+
+    log "Lambda" "API alias created: ${API_FUNCTION_ALIAS_NAME} -> version ${function_version}"
+  fi
+}
+
+publish_api_function_version_and_update_alias() {
+  wait_api_function_updated
+
+  published_version="$(aws_local lambda publish-version \
+    --function-name "${API_FUNCTION_NAME}" \
+    --query Version \
+    --output text)"
+
+  create_or_update_api_alias "${published_version}"
+}
+
 # API Gateway と Lambda の疎通確認を目的とした仮実装
 # React の開発サーバーから API を呼び出せるように、CORS ヘッダーも含める。
 create_or_update_spring_api_function() {
@@ -69,6 +114,7 @@ create_or_update_spring_api_function() {
       --timeout 60 \
       --memory-size 1024 \
       --environment "${API_LAMBDA_ENVIRONMENT_JSON}" \
+      --snap-start ApplyOn=PublishedVersions \
       >/dev/null
 
     log "Lambda" "Spring Boot API function updated: ${API_FUNCTION_NAME}"
@@ -82,10 +128,13 @@ create_or_update_spring_api_function() {
       --timeout 60 \
       --memory-size 1024 \
       --environment "${API_LAMBDA_ENVIRONMENT_JSON}" \
+      --snap-start ApplyOn=PublishedVersions \
       >/dev/null
 
     log "Lambda" "Spring Boot API function created: ${API_FUNCTION_NAME}"
   fi
+
+  publish_api_function_version_and_update_alias
 }
 
 # Worker Lambda の仮実装

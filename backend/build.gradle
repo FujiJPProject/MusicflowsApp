@@ -18,13 +18,26 @@ repositories {
 }
 
 dependencies {
+
+	// Spring Boot
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	
+	// MyBatis + PostgreSQL
 	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
+	runtimeOnly 'org.postgresql:postgresql'
+	
+	// OpenAPI (Swagger) UI
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
 	// Lambda + API Gateway 連携用
-	implementation "com.amazonaws.serverless:aws-serverless-java-container-springboot4:3.0.0"
+	implementation "com.amazonaws.serverless:aws-serverless-java-container-springboot4:3.0.2"
+
+    /*
+     * Springコンポーネント候補をコンパイル時に索引化する。
+     * Lambdaの初期化時のコンポーネント探索を軽減する。
+     */
+    annotationProcessor 'org.springframework:spring-context-indexer'
 
     // Lambda Event型を使う場合
 	implementation "com.amazonaws:aws-lambda-java-events:3.16.1"
@@ -36,8 +49,11 @@ dependencies {
 	implementation "software.amazon.awssdk:secretsmanager"
 	implementation "software.amazon.awssdk:sqs"
 
+	// 開発用ツール
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
-	runtimeOnly 'org.postgresql:postgresql'
+
+	// テスト用
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
@@ -48,16 +64,48 @@ tasks.named('test') {
 	useJUnitPlatform()
 }
 
-// Lambda デプロイ用の ZIP を作成するタスク
-tasks.register('buildLambdaZip', Zip) {
-    dependsOn compileJava, processResources
+/*
+ * Lambdaデプロイ用ZIP。
+ *
+ * ZIP構造:
+ *
+ * musicflows-lambda.zip
+ * ├── com/jws/musicflows/...
+ * ├── application.yml
+ * └── lib/
+ *     ├── spring-*.jar
+ *     ├── aws-*.jar
+ *     └── postgresql-*.jar
+ */tasks.register('buildLambdaZip', Zip) {
 
-    into('lib') {
-        from configurations.runtimeClasspath
-    }
+	// Lambda デプロイ用 ZIP の作成は、コンパイル後に行う
+    dependsOn tasks.named('classes')
 
+    // ZIP のファイル名と出力先を指定する
+    archiveFileName.set('musicflows-lambda.zip')
+	// ZIP の出力先を build/distributions に指定する
+    destinationDirectory.set(
+        layout.buildDirectory.dir('distributions')
+    )
+
+    // ZIP のルートに、コンパイル済みクラスとリソースを配置する
     from sourceSets.main.output
 
-    archiveFileName = 'musicflows-lambda.zip'
-    destinationDirectory = layout.buildDirectory.dir('distributions')
+
+   /*
+     * 本番実行用の依存JARだけをlibへ配置する。
+     *
+     * productionRuntimeClasspathを使うことで、
+     * developmentOnlyのDevToolsなどを除外する。
+     */
+    into('lib') {
+        from(configurations.productionRuntimeClasspath) {
+            
+			// Tomcatの埋め込みJARを除外する
+            exclude 'tomcat-embed-*.jar'
+        }
+    }
+
+    
+	
 }
