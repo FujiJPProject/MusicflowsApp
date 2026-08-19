@@ -10,7 +10,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 SPRING_BOOT_LAMBDA_ZIP="${SPRING_BOOT_LAMBDA_ZIP:-/app/lambda/springboot/musicflows-lambda.zip}"
 
 # 実際の Spring Boot Lambda Handler。
-API_HANDLER="${API_HANDLER:-com.jws.musicflows.lambda.ApiGatewayLambdaHandler::handleRequest}"
+API_HANDLER="${API_HANDLER:-com.jws.musicflows.lambda.ApiGatewayLambdaHandler}"
 
 # Lambda 関数のコードを格納する一時ディレクトリとファイルのパスを定義
 WORK_DIR="${LAMBDA_WORK_DIR:-/tmp/music-app-lambda}"
@@ -32,6 +32,7 @@ environment = {
         "SPRING_PROFILES_ACTIVE": "lambda",
         "AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
+        "FRONTEND_ORIGIN": "${FRONTEND_ORIGIN}",
         "DB_SECRET_NAME": "${SECRET_NAME}",
         "DB_HOST": "postgres",
         "DB_PORT": "5432",

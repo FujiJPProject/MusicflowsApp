@@ -1,3 +1,18 @@
 spring:
   application:
     name: musicflows
+
+
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true # スネークケースのカラム名をキャメルケースのプロパティ名にマッピングするための設定
+
+aws:
+  region: ${AWS_REGION:ap-northeast-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+
+app:
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
