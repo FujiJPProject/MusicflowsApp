@@ -119,6 +119,7 @@ services:
     working_dir: /app
     environment:
       SPRING_PROFILES_ACTIVE: local
+      SECURITY_ENABLED: "false"
       FRONTEND_ORIGIN: http://localhost:5173
       DB_HOST: postgres
       DB_PORT: "5432"

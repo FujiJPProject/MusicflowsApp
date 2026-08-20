@@ -1,8 +1,3 @@
-export type ApplicationHealth = {
-  status: string;
-  application: string;
-};
-
 export type Tests = {
   id: number;
   name: string;
@@ -22,12 +17,6 @@ export class TestsApi {
 
   getBaseUrl(): string {
     return this.baseUrl;
-  }
-
-  getApplicationHealth(): Promise<ApplicationHealth> {
-    return this.request<ApplicationHealth>(
-      "/api/test/health",
-    );
   }
 
   getTests(): Promise<Tests[]> {

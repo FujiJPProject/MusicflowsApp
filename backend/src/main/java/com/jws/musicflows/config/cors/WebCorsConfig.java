@@ -1,4 +1,4 @@
-package com.jws.musicflows.config;
+package com.jws.musicflows.config.cors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;

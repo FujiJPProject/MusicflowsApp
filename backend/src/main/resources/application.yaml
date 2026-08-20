@@ -16,3 +16,14 @@ aws:
 app:
   cors:
     allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+
+  security:
+    cognito:
+      # JWTのiss claimとして期待する値
+      issuer-uri: "${COGNITO_ISSUER_URI:}"
+  
+      # JWT署名検証用の公開鍵取得先
+      jwk-set-uri: "${COGNITO_JWK_SET_URI:}"
+  
+      # Access Tokenを発行したApp Clientを検証する
+      client-id: "${COGNITO_APP_CLIENT_ID:}"

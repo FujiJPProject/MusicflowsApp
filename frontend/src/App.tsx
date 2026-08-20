@@ -1,5 +1,5 @@
 import { useMemo,useState,type FormEvent } from 'react'
-import { TestsApi,type ApplicationHealth,type Tests,} from "./api/test/testsApi";
+import { TestsApi,type Tests,} from "./api/test/testsApi";
 import {loadRuntimeConfig,type RuntimeConfig,} from "./config/runtimeConfig";
 import './App.css'
 
@@ -16,7 +16,6 @@ function toErrorMessage(error: unknown): string {
 function App() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [mode, setMode] = useState<ApiMode>("direct");
-  const [applicationHealth, setApplicationHealth] = useState<ApplicationHealth | null>(null);
   const [projects, setProjects] = useState<Tests[]>([]);
   const [projectName, setProjectName] = useState("");
 
@@ -42,34 +41,6 @@ function App() {
       const loadedConfig = await loadRuntimeConfig();
       setConfig(loadedConfig);
 
-    } catch (cause) {
-      setError(toErrorMessage(cause));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 接続確認を実行する
-  const runConnectionTest = async () => {
-    if (!api) {
-      setError("先に設定ファイルを読み込んでください");
-      return;
-    }
-
-    setError(null);
-    setLoading(true);
-
-    try {
-      const [
-        applicationResult,
-        projectResult,
-      ] = await Promise.all([
-        api.getApplicationHealth(),
-        api.getTests(),
-      ]);
-
-      setApplicationHealth(applicationResult);
-      setProjects(projectResult);
     } catch (cause) {
       setError(toErrorMessage(cause));
     } finally {

@@ -19,6 +19,31 @@ WORKER_ZIP="${WORK_DIR}/music-job-worker.zip"
 
 log "Lambda" "Initialization started."
 
+COGNITO_USER_POOL_ID="$(
+  get_ssm_parameter \
+    "${PARAMETER_PREFIX}/cognito-user-pool-id"
+)"
+
+COGNITO_APP_CLIENT_ID="$(
+  get_ssm_parameter \
+    "${PARAMETER_PREFIX}/cognito-app-client-id"
+)"
+
+# JWTのiss claimと比較する値。
+# Flociが発行するJWTでは、現在 http://localhost:4566/<UserPoolId>
+# がissとして設定されているため、ホスト側URLを使用する。
+#
+# この値はJWTのclaim検証に使うだけなので、LambdaからlocalhostへHTTPアクセスする必要はない。
+
+COGNITO_ISSUER_URI="${AWS_EDGE_HOST_URL}/${COGNITO_USER_POOL_ID}"
+
+# JWT署名検証用JWKS。
+#
+# こちらはLambda実行コンテナから実際にHTTPアクセスする必要がある。
+#
+# Lambdaコンテナ内のlocalhostはFlociではないため、Docker内部URL http://floci:4566 を使用する。
+COGNITO_JWK_SET_URI="${AWS_EDGE_INTERNAL_URL}/${COGNITO_USER_POOL_ID}/.well-known/jwks.json"
+
 # 以前の作業領域を削除
 rm -rf "${WORK_DIR}"
 mkdir -p "${WORKER_DIR}"
@@ -33,6 +58,9 @@ environment = {
         "AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
         "FRONTEND_ORIGIN": "${FRONTEND_ORIGIN}",
+        "COGNITO_ISSUER_URI": "${COGNITO_ISSUER_URI}",
+        "COGNITO_JWK_SET_URI": "${COGNITO_JWK_SET_URI}",
+        "COGNITO_APP_CLIENT_ID": "${COGNITO_APP_CLIENT_ID}",
         "DB_SECRET_NAME": "${SECRET_NAME}",
         "DB_HOST": "postgres",
         "DB_PORT": "5432",
