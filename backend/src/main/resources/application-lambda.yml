@@ -1,9 +1,8 @@
-spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:music_app}
-    username: ${DB_USERNAME:app_user}
-    password: ${DB_PASSWORD:app_password}
-    driver-class-name: org.postgresql.Driver
+app:
+  database:
+    # DB接続情報そのものではなく、
+    # Secrets ManagerのSecret名だけをSpring Bootへ渡す。
+    secret-name: ${DB_SECRET_NAME}
 
     hikari:
       maximum-pool-size: 2

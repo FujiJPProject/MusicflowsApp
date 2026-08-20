@@ -12,10 +12,20 @@ SPRING_BOOT_LAMBDA_ZIP="${SPRING_BOOT_LAMBDA_ZIP:-/app/lambda/springboot/musicfl
 # 実際の Spring Boot Lambda Handler。
 API_HANDLER="${API_HANDLER:-com.jws.musicflows.lambda.ApiGatewayLambdaHandler}"
 
-# Lambda 関数のコードを格納する一時ディレクトリとファイルのパスを定義
-WORK_DIR="${LAMBDA_WORK_DIR:-/tmp/music-app-lambda}"
+#  Worker Lambda作成用の一時作業ディレクトリ
+WORK_DIR="$(mktemp -d /tmp/music-app-lambda.XXXXXX)"
 WORKER_DIR="${WORK_DIR}/music-job-worker"
 WORKER_ZIP="${WORK_DIR}/music-job-worker.zip"
+
+mkdir -p "${WORKER_DIR}"
+
+# 終了時に一時ファイルを削除する。
+# Floci側で権限が変更されて削除できなくても、初期化処理自体を失敗させない。
+cleanup_lambda_work_dir() {
+  rm -rf "${WORK_DIR}" 2>/dev/null || true
+}
+
+trap cleanup_lambda_work_dir EXIT
 
 log "Lambda" "Initialization started."
 
@@ -61,12 +71,7 @@ environment = {
         "COGNITO_ISSUER_URI": "${COGNITO_ISSUER_URI}",
         "COGNITO_JWK_SET_URI": "${COGNITO_JWK_SET_URI}",
         "COGNITO_APP_CLIENT_ID": "${COGNITO_APP_CLIENT_ID}",
-        "DB_SECRET_NAME": "${SECRET_NAME}",
-        "DB_HOST": "postgres",
-        "DB_PORT": "5432",
-        "DB_NAME": "music_app",
-        "DB_USERNAME": "app_user",
-        "DB_PASSWORD": "app_password"
+        "DB_SECRET_NAME": "${SECRET_NAME}"
     }
 }
 
