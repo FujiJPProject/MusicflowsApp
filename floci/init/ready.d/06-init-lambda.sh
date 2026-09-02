@@ -10,14 +10,23 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 LAMBDA_ARTIFACT_BUCKET="${FILE_BUCKET}"
 
-API_LAMBDA_ARTIFACT_KEY="_lambda-artifacts/musicflows-lambda.zip"
+# API Lambda用ZIPを保存するS3キー。
+API_LAMBDA_ARTIFACT_KEY="_lambda-artifacts/musicflows-api-lambda.zip"
 
-WORKER_LAMBDA_ARTIFACT_KEY="${API_LAMBDA_ARTIFACT_KEY}"
+# Worker LambdaはAPI Lambdaとは異なるZIPを使用する。
+# Spring Cloud Function関連の依存関係をAPI側へ混入させないため、
+# 異なるS3キーを使用する。
+WORKER_LAMBDA_ARTIFACT_KEY="_lambda-artifacts/musicflows-worker-lambda.zip"
 
 # Spring Boot の bootJar 成果物。
 # docker-compose.yml 側で ./backend/build/libs:/app/lambda/springboot をマウントしておく想定。
 # SPRING_BOOT_JAR="${SPRING_BOOT_JAR:-/app/lambda/springboot/musicflows-0.0.1-SNAPSHOT.jar}"
-SPRING_BOOT_LAMBDA_ZIP="${SPRING_BOOT_LAMBDA_ZIP:-/app/lambda/springboot/musicflows-lambda.zip}"
+# 現在はbootJarではなく、docker-compose.ymlがマウントする
+# ./backend/build/distributions内のLambda専用ZIPを使用する。
+API_LAMBDA_ZIP="${API_LAMBDA_ZIP:-/app/lambda/springboot/musicflows-api-lambda.zip}"
+
+# Worker Lambda用ZIPのFlociコンテナ内パス。
+WORKER_LAMBDA_ZIP="${WORKER_LAMBDA_ZIP:-/app/lambda/springboot/musicflows-worker-lambda.zip}"
 
 # 実際の Spring Boot Lambda Handler。
 API_HANDLER="${API_HANDLER:-com.jws.musicflows.lambda.ApiGatewayLambdaHandler}"
@@ -105,6 +114,14 @@ wait_api_function_updated() {
     >/dev/null 2>&1 || true
 }
 
+# Worker Lambdaのコードまたは設定更新が完了するまで待機する。
+# update-function-code直後の設定更新や、後続のEvent Source Mapping設定との競合を防ぐ。
+wait_worker_function_updated() {
+  aws_local lambda wait function-updated-v2 \
+    --function-name "${WORKER_FUNCTION_NAME}" \
+    >/dev/null 2>&1 || true
+}
+
 
 create_or_update_api_alias() {
   function_version="$1"
@@ -144,33 +161,38 @@ publish_api_function_version_and_update_alias() {
 }
 
 # Lambdaのデプロイ成果物をS3にアップロードする。
+# API LambdaとWorker Lambdaで異なるZIPを使用するため、
+# ローカルパスとS3キーを引数で受け取る。
 upload_lambda_artifact() {
+  artifact_path="$1"
+  artifact_key="$2"
 
   # Lambda ZIPが存在しない場合は、Gradleでビルドしていない可能性があるので、エラーとして処理する。
-  if [ ! -f "${SPRING_BOOT_LAMBDA_ZIP}" ]; then
-    log "Lambda" "Lambda ZIP not found: ${SPRING_BOOT_LAMBDA_ZIP}"
+  if [ ! -f "${artifact_path}" ]; then
+    log "Lambda" "Lambda ZIP not found: ${artifact_path}"
     return 1
   fi
 
-  log "Lambda" "Uploading Lambda artifact to S3: s3://${LAMBDA_ARTIFACT_BUCKET}/${API_LAMBDA_ARTIFACT_KEY}"
+  log "Lambda" "Uploading Lambda artifact to S3: s3://${LAMBDA_ARTIFACT_BUCKET}/${artifact_key}"
 
   # Lambda ZIPをS3にアップロードする。
   aws_local s3api put-object \
     --bucket "${LAMBDA_ARTIFACT_BUCKET}" \
-    --key "${API_LAMBDA_ARTIFACT_KEY}" \
-    --body "${SPRING_BOOT_LAMBDA_ZIP}" \
+    --key "${artifact_key}" \
+    --body "${artifact_path}" \
     >/dev/null
 
-  log "Lambda" "Lambda artifact uploaded."
+  log "Lambda" "Lambda artifact uploaded: ${artifact_key}"
 }
 
 # API Gateway と Lambda の疎通確認を目的とした仮実装
 # React の開発サーバーから API を呼び出せるように、CORS ヘッダーも含める。
 create_or_update_spring_api_function() {
-  if [ ! -f "${SPRING_BOOT_LAMBDA_ZIP}" ]; then
-    log "Lambda" "Spring Boot JAR not found: ${SPRING_BOOT_LAMBDA_ZIP}"
-    log "Lambda" "Skip API Lambda creation. Run './gradlew clean bootJar' first."
-    return
+  # API Lambda専用ZIPが存在することを確認する。
+  if [ ! -f "${API_LAMBDA_ZIP}" ]; then
+    log "Lambda" "API Lambda ZIP not found: ${API_LAMBDA_ZIP}"
+    log "Lambda" "Skip API Lambda creation. Run './gradlew clean buildApiLambdaZip' first."
+    return 1
   fi
 
   API_LAMBDA_ENVIRONMENT_JSON="$(create_api_environment_json_value)"
@@ -186,6 +208,9 @@ create_or_update_spring_api_function() {
       --s3-bucket "${LAMBDA_ARTIFACT_BUCKET}" \
       --s3-key "${API_LAMBDA_ARTIFACT_KEY}" \
       >/dev/null
+
+    # コード更新完了後にLambdaの設定を更新する。
+    wait_api_function_updated
 
     # Lambdaの設定を更新する。
     aws_local lambda update-function-configuration \
@@ -223,6 +248,12 @@ create_or_update_spring_api_function() {
 
 # Worker Lambda の実装
 create_or_update_worker_function() {
+  # Worker Lambda専用ZIPが存在することを確認する。
+  if [ ! -f "${WORKER_LAMBDA_ZIP}" ]; then
+    log "Lambda" "Worker Lambda ZIP not found: ${WORKER_LAMBDA_ZIP}"
+    log "Lambda" "Skip Worker Lambda creation. Run './gradlew clean buildWorkerLambdaZip' first."
+    return 1
+  fi
 
   WORKER_ENVIRONMENT_JSON="$(
     create_worker_environment_json_value
@@ -240,6 +271,9 @@ create_or_update_worker_function() {
       --s3-key "${WORKER_LAMBDA_ARTIFACT_KEY}" \
       >/dev/null
 
+    # コード更新完了後にWorker Lambdaの設定を更新する。
+    wait_worker_function_updated
+
     aws_local lambda update-function-configuration \
       --function-name "${WORKER_FUNCTION_NAME}" \
       --runtime java25 \
@@ -248,6 +282,9 @@ create_or_update_worker_function() {
       --memory-size 512 \
       --environment "${WORKER_ENVIRONMENT_JSON}" \
       >/dev/null
+
+    # 後続のEvent Source Mapping設定より前に、Worker Lambdaの設定更新完了を待つ。
+    wait_worker_function_updated
 
     log "Lambda" \
       "Spring Cloud Function Worker updated: ${WORKER_FUNCTION_NAME}"
@@ -276,14 +313,24 @@ create_or_update_worker_function() {
 # Lambda ZIPを先にS3へ配置する。
 # API / WorkerのLambda APIへ巨大なBase64を直接送らない。
 # ------------------------------------------------------------
-upload_lambda_artifact
+# API Lambda専用ZIPをアップロードする。
+upload_lambda_artifact \
+  "${API_LAMBDA_ZIP}" \
+  "${API_LAMBDA_ARTIFACT_KEY}"
+
+# Worker Lambda専用ZIPをアップロードする。
+upload_lambda_artifact \
+  "${WORKER_LAMBDA_ZIP}" \
+  "${WORKER_LAMBDA_ARTIFACT_KEY}"
 
 
 # ------------------------------------------------------------
 # S3上の成果物からLambdaを作成・更新する。
 # ------------------------------------------------------------
+# API LambdaはAPI専用ZIPから作成・更新する。
 create_or_update_spring_api_function
 
+# Worker LambdaはWorker専用ZIPから作成・更新する。
 create_or_update_worker_function
 
 
