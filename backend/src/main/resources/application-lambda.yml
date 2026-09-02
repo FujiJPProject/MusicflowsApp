@@ -1,16 +1,16 @@
-spring:
-  datasource:
-    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:music_app}
-    username: ${DB_USERNAME:app_user}
-    password: ${DB_PASSWORD:app_password}
-    driver-class-name: org.postgresql.Driver
+app:
+  database:
+    # DB接続情報そのものではなく、
+    # Secrets ManagerのSecret名だけをSpring Bootへ渡す。
+    secret-name: ${DB_SECRET_NAME}
 
-mybatis:
-  mapper-locations: classpath*:mapper/**/*.xml
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 0
+      connection-timeout: 5000 
+      idle-timeout: 30000 # 接続がアイドル状態のまま保持される最大時間（ミリ秒）
 
-server:
-  port: 8080
-
-aws:
-  region: ${AWS_REGION:ap-northeast-1}
-  endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+logging:
+  level:
+    root: INFO
+    com.jws.musicflows: INFO

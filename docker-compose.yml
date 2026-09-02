@@ -37,6 +37,15 @@ services:
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
       FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "120"
 
+       # --------------------------------------------------------
+       # ブラウザからFlociへアクセスするためのCORS設定
+       # React開発サーバー http://localhost:5173 を許可する
+       # --------------------------------------------------------
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: http://localhost:5173
+
+       # Authorizationは今後Cognito/JWTを利用するため含めておく
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_HEADERS: Content-Type,Authorization
+
       # AWS CLI / Lambda 実行コンテナが利用するローカル設定
       AWS_REGION: ap-northeast-1
       AWS_DEFAULT_REGION: ap-northeast-1
@@ -71,7 +80,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
       # Spring Boot Lambdaの成果物をFloci初期化スクリプトから参照する
-      - ./backend/build/distributions:/app/lambda/springboot
+      - ./backend/build/distributions:/app/lambda/springboot:ro
 
     # Flociが完全に起動してからFlociコンテナを起動するための依存関係
     depends_on:
@@ -101,20 +110,32 @@ services:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev
+      # ホストのUID/GIDをコンテナに渡すことで、ホストとコンテナ間でファイルの所有権を一致させる
+      args:
+        USER_ID: ${HOST_UID:-1000}
+        GROUP_ID: ${HOST_GID:-1000}
     container_name: music-app-backend
     ports:
       - "8080:8080"
     volumes:
+      # ソースコードはホストと共有
+      # backend/build はFlociからLambda ZIPを参照するためホストとの共有を維持する。
       - ./backend:/app
-      - gradle_cache:/home/gradle/.gradle
+      # Gradle Project CacheだけDocker専用に分離とすることでGradleのlock競合を防止する。
+      - ./.docker-cache/backend-gradle-project:/app/.gradle
     working_dir: /app
     environment:
+      # Spring Bootのプロファイルをlocalに設定することで、LocalSqsWorkerPollerが無効化され、SQSをpollしないようになる。
       SPRING_PROFILES_ACTIVE: local
+      SECURITY_ENABLED: "false"
+      FRONTEND_ORIGIN: http://localhost:5173
+      # Spring Boot LambdaからDBへ接続するための設定
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: music_app
       DB_USERNAME: app_user
       DB_PASSWORD: app_password
+      # AWS CLI / Lambda 実行コンテナが利用するローカル設定
       AWS_REGION: ap-northeast-1
       AWS_ENDPOINT_URL: http://floci:4566
     depends_on:
@@ -125,11 +146,55 @@ services:
     networks:
       - music-app-network
 
+  worker-local:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.dev
+      # ホストのUID/GIDをコンテナに渡すことで、ホストとコンテナ間でファイルの所有権を一致させる
+      args:
+        USER_ID: ${HOST_UID:-1000}
+        GROUP_ID: ${HOST_GID:-1000}
+
+    container_name: music-app-worker-local
+
+    volumes:
+      - ./backend:/app
+      # Worker専用Gradle Project Cache
+      - ./.docker-cache/worker-gradle-project:/app/.gradle
+      # Worker専用buildディレクトリ
+      - ./.docker-cache/worker-build:/app/build
+
+    working_dir: /app
+
+    # Spring Boot Workerを起動するためのコマンド
+    command:
+      - ./gradlew
+      - runWorkerLocal
+      - --no-daemon
+
+    environment:
+      #   Spring Bootのプロファイルをworker-localに設定することで、
+      #   LocalSqsWorkerPollerが有効化され、SQSをpollするようになる。
+      SPRING_PROFILES_ACTIVE: worker-local
+      #  Spring Boot LambdaからDBへ接続するための設定
+      AWS_REGION: ap-northeast-1
+      AWS_ENDPOINT_URL: http://floci:4566
+      # Spring Boot LambdaからS3へ接続するための設定
+      FILE_BUCKET: music-app-local-files
+      SQS_QUEUE_NAME: music-app-local-music-jobs
+
+    depends_on:
+      floci:
+        condition: service_started
+
+    networks:
+      - music-app-network
+
 volumes:
   postgres_data:
   floci_data:
   frontend_node_modules:
-  gradle_cache:
+
 
 networks:
   music-app-network:

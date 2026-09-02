@@ -5,9 +5,15 @@ spring:
     password: ${DB_PASSWORD:app_password}
     driver-class-name: org.postgresql.Driver
 
+    hikari:
+      maximum-pool-size: 5 # 同時に保持・使用できるDB接続数の上限
+      minimum-idle: 1 # 処理をしていない状態でも、最低何本の接続を待機させておくかという設定
+      connection-timeout: 5000 # 接続を取得するまでの最大待機時間（ミリ秒）
+
 server:
   port: 8080
 
-aws:
-  region: ${AWS_REGION:ap-northeast-1}
-  endpoint-url: ${AWS_ENDPOINT_URL:http://localhost:4566}
+logging:
+  level:
+    com.jws.musicflows: DEBUG
+    org.mybatis: INFO

@@ -1,2 +1,6 @@
 # Flociの接続情報を
 frontend/public/config
+.docker-cache/
+
+### VS Code ###
+.vscode/
