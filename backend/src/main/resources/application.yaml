@@ -25,3 +25,8 @@ app:
   
       # Access Tokenを発行したApp Clientを検証する
       client-id: "${COGNITO_APP_CLIENT_ID:}"
+  
+  music-job:
+    queue-name: ${SQS_QUEUE_NAME:music-app-local-music-jobs}
+    bucket-name: ${FILE_BUCKET:music-app-local-files}
+    result-prefix: worker-results

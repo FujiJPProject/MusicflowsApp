@@ -23,6 +23,15 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
+    // Spring Cloud BOM
+    implementation platform(
+        'org.springframework.cloud:spring-cloud-dependencies:2025.1.1'
+    )
+
+    // Spring Cloud Function + AWS Lambda
+	implementation 'org.springframework.cloud:spring-cloud-function-context'
+	implementation 'org.springframework.cloud:spring-cloud-function-adapter-aws'
+
 	// Spring Security + OAuth2 Resource Server
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
@@ -109,7 +118,52 @@ tasks.named('test') {
             exclude 'tomcat-embed-*.jar'
         }
     }
-
-    
 	
+}
+
+
+/*
+ * ローカルWorker起動用Gradle Task。
+ *
+ * Spring Cloud FunctionのWorkerを
+ * Lambdaを使わずローカルSpring Bootとして起動する。
+ */
+ tasks.register('runWorkerLocal', JavaExec) {
+
+    group = 'application'
+    description = 'Run music job worker locally'
+
+    dependsOn tasks.named('classes')
+
+    classpath = sourceSets.main.runtimeClasspath
+
+    mainClass.set(
+        'com.jws.musicworker.WorkerFunctionApplication'
+    )
+
+    args(
+        '--spring.profiles.active=worker-local'
+    )
+}   
+
+/**
+    * Spring Boot開発サーバーの起動時に、Lambdaのエントリポイントを指定する。
+ */
+tasks.named('bootRun') {
+    mainClass = 'com.jws.musicflows.MusicflowsApplication'
+}
+
+/**
+ * Spring Boot開発サーバーの起動時に、Lambdaのエントリポイントを指定する。
+ */
+tasks.named('bootJar') {
+    mainClass = 'com.jws.musicflows.MusicflowsApplication'
+}
+
+// ---------------------------------------------------------
+// Local Worker開発サーバー起動時に、Lambdaのエントリポイントを指定する。
+// ---------------------------------------------------------
+
+tasks.named('runWorkerLocal') {
+    mainClass = 'com.jws.musicworker.WorkerFunctionApplication'
 }

@@ -4,6 +4,16 @@ set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
 
+# ------------------------------------------------------------
+# Lambdaデプロイ成果物
+# ------------------------------------------------------------
+
+LAMBDA_ARTIFACT_BUCKET="${FILE_BUCKET}"
+
+API_LAMBDA_ARTIFACT_KEY="_lambda-artifacts/musicflows-lambda.zip"
+
+WORKER_LAMBDA_ARTIFACT_KEY="${API_LAMBDA_ARTIFACT_KEY}"
+
 # Spring Boot の bootJar 成果物。
 # docker-compose.yml 側で ./backend/build/libs:/app/lambda/springboot をマウントしておく想定。
 # SPRING_BOOT_JAR="${SPRING_BOOT_JAR:-/app/lambda/springboot/musicflows-0.0.1-SNAPSHOT.jar}"
@@ -12,20 +22,10 @@ SPRING_BOOT_LAMBDA_ZIP="${SPRING_BOOT_LAMBDA_ZIP:-/app/lambda/springboot/musicfl
 # 実際の Spring Boot Lambda Handler。
 API_HANDLER="${API_HANDLER:-com.jws.musicflows.lambda.ApiGatewayLambdaHandler}"
 
-#  Worker Lambda作成用の一時作業ディレクトリ
-WORK_DIR="$(mktemp -d /tmp/music-app-lambda.XXXXXX)"
-WORKER_DIR="${WORK_DIR}/music-job-worker"
-WORKER_ZIP="${WORK_DIR}/music-job-worker.zip"
-
-mkdir -p "${WORKER_DIR}"
-
-# 終了時に一時ファイルを削除する。
-# Floci側で権限が変更されて削除できなくても、初期化処理自体を失敗させない。
-cleanup_lambda_work_dir() {
-  rm -rf "${WORK_DIR}" 2>/dev/null || true
-}
-
-trap cleanup_lambda_work_dir EXIT
+# Worker Lambda の設定。
+WORKER_HANDLER="org.springframework.cloud.function.adapter.aws.FunctionInvoker::handleRequest"
+# Worker Lambda のメインクラス。
+WORKER_MAIN_CLASS="com.jws.musicworker.WorkerFunctionApplication"
 
 log "Lambda" "Initialization started."
 
@@ -54,9 +54,6 @@ COGNITO_ISSUER_URI="${AWS_EDGE_HOST_URL}/${COGNITO_USER_POOL_ID}"
 # Lambdaコンテナ内のlocalhostはFlociではないため、Docker内部URL http://floci:4566 を使用する。
 COGNITO_JWK_SET_URI="${AWS_EDGE_INTERNAL_URL}/${COGNITO_USER_POOL_ID}/.well-known/jwks.json"
 
-# 以前の作業領域を削除
-rm -rf "${WORK_DIR}"
-mkdir -p "${WORKER_DIR}"
 
 create_api_environment_json_value() {
   python3 - <<PY
@@ -67,6 +64,8 @@ environment = {
         "SPRING_PROFILES_ACTIVE": "lambda",
         "AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
+        "SQS_QUEUE_NAME": "${QUEUE_NAME}",
+        "FILE_BUCKET": "${FILE_BUCKET}",
         "FRONTEND_ORIGIN": "${FRONTEND_ORIGIN}",
         "COGNITO_ISSUER_URI": "${COGNITO_ISSUER_URI}",
         "COGNITO_JWK_SET_URI": "${COGNITO_JWK_SET_URI}",
@@ -79,6 +78,26 @@ print(json.dumps(environment))
 PY
 }
 
+create_worker_environment_json_value() {
+
+  python3 - <<PY
+import json
+
+environment = {
+    "Variables": {
+
+        "SPRING_PROFILES_ACTIVE": "worker-lambda",
+        "MAIN_CLASS": "${WORKER_MAIN_CLASS}",
+        "spring_cloud_function_definition": "musicJobWorker",
+        "AWS_REGION": "${AWS_REGION}",
+        "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
+        "FILE_BUCKET": "${FILE_BUCKET}"
+    }
+}
+
+print(json.dumps(environment))
+PY
+}
 
 wait_api_function_updated() {
   aws_local lambda wait function-updated-v2 \
@@ -124,6 +143,27 @@ publish_api_function_version_and_update_alias() {
   create_or_update_api_alias "${published_version}"
 }
 
+# Lambdaのデプロイ成果物をS3にアップロードする。
+upload_lambda_artifact() {
+
+  # Lambda ZIPが存在しない場合は、Gradleでビルドしていない可能性があるので、エラーとして処理する。
+  if [ ! -f "${SPRING_BOOT_LAMBDA_ZIP}" ]; then
+    log "Lambda" "Lambda ZIP not found: ${SPRING_BOOT_LAMBDA_ZIP}"
+    return 1
+  fi
+
+  log "Lambda" "Uploading Lambda artifact to S3: s3://${LAMBDA_ARTIFACT_BUCKET}/${API_LAMBDA_ARTIFACT_KEY}"
+
+  # Lambda ZIPをS3にアップロードする。
+  aws_local s3api put-object \
+    --bucket "${LAMBDA_ARTIFACT_BUCKET}" \
+    --key "${API_LAMBDA_ARTIFACT_KEY}" \
+    --body "${SPRING_BOOT_LAMBDA_ZIP}" \
+    >/dev/null
+
+  log "Lambda" "Lambda artifact uploaded."
+}
+
 # API Gateway と Lambda の疎通確認を目的とした仮実装
 # React の開発サーバーから API を呼び出せるように、CORS ヘッダーも含める。
 create_or_update_spring_api_function() {
@@ -135,12 +175,19 @@ create_or_update_spring_api_function() {
 
   API_LAMBDA_ENVIRONMENT_JSON="$(create_api_environment_json_value)"
 
-  if aws_local lambda get-function --function-name "${API_FUNCTION_NAME}" >/dev/null 2>&1; then
-    aws_local lambda update-function-code \
+  # API Lambda が存在するか確認し、存在すれば更新、存在しなければ作成する。
+  if aws_local lambda get-function \
       --function-name "${API_FUNCTION_NAME}" \
-      --zip-file "fileb://${SPRING_BOOT_LAMBDA_ZIP}" \
+      >/dev/null 2>&1; then
+    
+     # LambdaのコードをS3から更新する場合は、S3にアップロード済みである必要がある。
+     aws_local lambda update-function-code \
+      --function-name "${API_FUNCTION_NAME}" \
+      --s3-bucket "${LAMBDA_ARTIFACT_BUCKET}" \
+      --s3-key "${API_LAMBDA_ARTIFACT_KEY}" \
       >/dev/null
 
+    # Lambdaの設定を更新する。
     aws_local lambda update-function-configuration \
       --function-name "${API_FUNCTION_NAME}" \
       --runtime java25 \
@@ -153,12 +200,15 @@ create_or_update_spring_api_function() {
 
     log "Lambda" "Spring Boot API function updated: ${API_FUNCTION_NAME}"
   else
+    
+    # LambdaのコードをS3から作成する場合は、S3にアップロード済みである必要がある。
     aws_local lambda create-function \
       --function-name "${API_FUNCTION_NAME}" \
       --runtime java25 \
       --role "${LAMBDA_ROLE_ARN}" \
       --handler "${API_HANDLER}" \
-      --zip-file "fileb://${SPRING_BOOT_LAMBDA_ZIP}" \
+      --code \
+        "S3Bucket=${LAMBDA_ARTIFACT_BUCKET},S3Key=${API_LAMBDA_ARTIFACT_KEY}" \
       --timeout 60 \
       --memory-size 1024 \
       --environment "${API_LAMBDA_ENVIRONMENT_JSON}" \
@@ -171,54 +221,70 @@ create_or_update_spring_api_function() {
   publish_api_function_version_and_update_alias
 }
 
-# Worker Lambda の仮実装
+# Worker Lambda の実装
 create_or_update_worker_function() {
-  cat > "${WORKER_DIR}/index.mjs" <<'EOF'
-export const handler = async (event) => {
-  console.log("Received music job messages:", JSON.stringify(event));
 
-  for (const record of event.Records ?? []) {
-    console.log("Processing music job:", record.body);
-  }
+  WORKER_ENVIRONMENT_JSON="$(
+    create_worker_environment_json_value
+  )"
 
-  return {
-    batchItemFailures: []
-  };
-};
-EOF
+  # Worker Lambda が存在するか確認し、存在すれば更新、存在しなければ作成する。
+  if aws_local lambda get-function \
+      --function-name "${WORKER_FUNCTION_NAME}" \
+      >/dev/null 2>&1; then
 
-  python3 - "${WORKER_DIR}" "${WORKER_ZIP}" <<'PY'
-import sys
-import zipfile
-
-worker_dir, worker_zip = sys.argv[1:]
-
-with zipfile.ZipFile(worker_zip, "w", zipfile.ZIP_DEFLATED) as archive:
-    archive.write(f"{worker_dir}/index.mjs", "index.mjs")
-PY
-
-  if aws_local lambda get-function --function-name "${WORKER_FUNCTION_NAME}" >/dev/null 2>&1; then
+    # LambdaのコードをS3から更新する場合は、S3にアップロード済みである必要がある。
     aws_local lambda update-function-code \
       --function-name "${WORKER_FUNCTION_NAME}" \
-      --zip-file "fileb://${WORKER_ZIP}" \
+      --s3-bucket "${LAMBDA_ARTIFACT_BUCKET}" \
+      --s3-key "${WORKER_LAMBDA_ARTIFACT_KEY}" \
       >/dev/null
-    log "Lambda" "Worker function code updated: ${WORKER_FUNCTION_NAME}"
-  else
-    aws_local lambda create-function \
+
+    aws_local lambda update-function-configuration \
       --function-name "${WORKER_FUNCTION_NAME}" \
-      --runtime nodejs22.x \
-      --role "${LAMBDA_ROLE_ARN}" \
-      --handler index.handler \
-      --zip-file "fileb://${WORKER_ZIP}" \
+      --runtime java25 \
+      --handler "${WORKER_HANDLER}" \
       --timeout 30 \
-      --memory-size 256 \
+      --memory-size 512 \
+      --environment "${WORKER_ENVIRONMENT_JSON}" \
       >/dev/null
-    log "Lambda" "Worker function created: ${WORKER_FUNCTION_NAME}"
+
+    log "Lambda" \
+      "Spring Cloud Function Worker updated: ${WORKER_FUNCTION_NAME}"
+
+  else
+
+    # LambdaのコードをS3から作成する場合は、S3にアップロード済みである必要がある。
+    aws_local lambda create-function \
+       --function-name "${WORKER_FUNCTION_NAME}" \
+       --runtime java25 \
+       --role "${LAMBDA_ROLE_ARN}" \
+       --handler "${WORKER_HANDLER}" \
+       --code \
+         "S3Bucket=${LAMBDA_ARTIFACT_BUCKET},S3Key=${WORKER_LAMBDA_ARTIFACT_KEY}" \
+       --timeout 30 \
+       --memory-size 512 \
+       --environment "${WORKER_ENVIRONMENT_JSON}" \
+       >/dev/null
+
+    log "Lambda" \
+      "Spring Cloud Function Worker created: ${WORKER_FUNCTION_NAME}"
   fi
 }
 
-# API Gateway と Lambda の接続は、API Gateway のリソースとメソッドの設定で行うため、ここでは Lambda 関数の作成・更新のみを行う。
+# ------------------------------------------------------------
+# Lambda ZIPを先にS3へ配置する。
+# API / WorkerのLambda APIへ巨大なBase64を直接送らない。
+# ------------------------------------------------------------
+upload_lambda_artifact
+
+
+# ------------------------------------------------------------
+# S3上の成果物からLambdaを作成・更新する。
+# ------------------------------------------------------------
 create_or_update_spring_api_function
+
 create_or_update_worker_function
+
 
 log "Lambda" "Initialization completed."

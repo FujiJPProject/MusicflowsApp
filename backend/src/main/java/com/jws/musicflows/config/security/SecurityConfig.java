@@ -93,6 +93,13 @@ public class SecurityConfig {
                 ).authenticated()
 
                 /*
+                 * 新規ジョブAPI。
+                 */
+                .requestMatchers(
+                    "/api/test-jobs/**"
+                ).authenticated()   
+
+                /*
                  * 第2段階では未定義APIも
                  * 原則認証必須にしておく。
                  */
