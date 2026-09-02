@@ -314,10 +314,15 @@ tasks.register('verifyLambdaDependencySeparation') {
         // API Lambdaへ含まれるJAR名を取得する。
         def apiJarNames = configurations.apiLambdaRuntimeClasspath.files.collect { it.name }
 
-        // API LambdaではSpring Cloud FunctionとWebFluxを禁止する。
+        /*
+         * API LambdaではWorker用AWS AdapterとWebFluxを禁止する。
+         * aws-serverless-java-container-springboot4が必要とする
+         * spring-cloud-function-serverless-webはAPI側でも許可する。
+         */
         def forbiddenApiJars = apiJarNames.findAll { jarName ->
-            jarName.startsWith('spring-cloud-function-') ||
-                jarName.startsWith('spring-webflux-')
+            jarName.startsWith('spring-cloud-function-adapter-aws-') ||
+                jarName.startsWith('spring-webflux-') ||
+                jarName.startsWith('spring-boot-starter-webflux-')
         }
 
         if (!forbiddenApiJars.isEmpty()) {
