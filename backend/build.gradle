@@ -17,34 +17,152 @@ repositories {
 	mavenCentral()
 }
 
+/*
+ * API LambdaとWorker Lambdaを別々の成果物として作成する。
+ *
+ * 通常のmain SourceSetは、bootRunとrunWorkerLocalによる
+ * ローカル実行のため、APIとWorkerの両方を引き続き含める。
+ */
+sourceSets {
+    // API Gatewayから呼び出されるAPI Lambda用SourceSet。
+    apiLambda {
+        java {
+            // API側のApplication、Controller、設定、Handlerだけを含める。
+            srcDirs = ['src/main/java']
+            include 'com/jws/musicflows/**'
+        }
+
+        resources {
+            // API起動に必要な設定とMyBatis Mapperだけを含める。
+            srcDirs = ['src/main/resources']
+            include 'application.yaml'
+            include 'application-lambda.yml'
+            include 'mapper/**'
+        }
+    }
+
+    // SQS Event Source Mappingから呼び出されるWorker Lambda用SourceSet。
+    workerLambda {
+        java {
+            // Worker用Application、AWS設定、Functionだけを含める。
+            srcDirs = ['src/main/java']
+            include 'com/jws/musicworker/**'
+        }
+
+        resources {
+            // Lambda実行ではworker-local用設定を含めない。
+            srcDirs = ['src/main/resources']
+            include 'application-worker-lambda.yml'
+        }
+    }
+}
+
+/*
+ * API LambdaとWorker Lambdaで依存関係を分離するための
+ * 宣言専用Configuration。
+ */
+configurations {
+    // APIとWorkerの両方で使用する依存関係。
+    lambdaCommonImplementation {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+
+    // APIだけで使用する依存関係。
+    apiOnlyImplementation {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+
+    // API実行時だけ必要な依存関係。
+    apiOnlyRuntime {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+
+    // Workerだけで使用する依存関係。
+    workerOnlyImplementation {
+        canBeConsumed = false
+        canBeResolved = false
+    }
+
+    /*
+     * 通常のmain SourceSetは、既存のbootRunとrunWorkerLocalを
+     * 維持するため、APIとWorkerの依存関係を両方継承する。
+     */
+    implementation.extendsFrom(
+        lambdaCommonImplementation,
+        apiOnlyImplementation,
+        workerOnlyImplementation
+    )
+    runtimeOnly.extendsFrom(apiOnlyRuntime)
+
+    /*
+     * API Lambdaには共通依存関係とAPI専用依存関係だけを含める。
+     * workerOnlyImplementationを継承しないことで、
+     * Spring Cloud FunctionとWebFluxの混入を防ぐ。
+     */
+    apiLambdaImplementation.extendsFrom(
+        lambdaCommonImplementation,
+        apiOnlyImplementation
+    )
+    apiLambdaRuntimeOnly.extendsFrom(apiOnlyRuntime)
+
+    // Worker Lambdaには共通依存関係とWorker専用依存関係だけを含める。
+    workerLambdaImplementation.extendsFrom(
+        lambdaCommonImplementation,
+        workerOnlyImplementation
+    )
+}
+
 dependencies {
 
 	// Spring Boot
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // Spring MVCとValidationはAPI Lambdaだけに含める。
+	apiOnlyImplementation 'org.springframework.boot:spring-boot-starter-validation'
+	apiOnlyImplementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
     // Spring Cloud BOM
-    implementation platform(
+    // Spring Cloud FunctionはWorker専用なので、BOMもWorker側だけに適用する。
+    workerOnlyImplementation platform(
         'org.springframework.cloud:spring-cloud-dependencies:2025.1.1'
     )
 
     // Spring Cloud Function + AWS Lambda
-	implementation 'org.springframework.cloud:spring-cloud-function-context'
-	implementation 'org.springframework.cloud:spring-cloud-function-adapter-aws'
+    // API Lambdaへ混入させず、SQS Worker Lambdaだけに含める。
+	workerOnlyImplementation 'org.springframework.cloud:spring-cloud-function-context'
+	workerOnlyImplementation 'org.springframework.cloud:spring-cloud-function-adapter-aws'
+
+    /*
+     * WorkerFunctionApplicationがSpringApplicationを使用するため、
+     * Spring Bootの基本Starterを明示する。
+     */
+    workerOnlyImplementation 'org.springframework.boot:spring-boot-starter'
+
+    /*
+     * WorkerFunctionApplicationがDataSourceAutoConfiguration.classを
+     * 除外対象として参照するため、Worker側にもJDBC AutoConfigurationを含める。
+     * PostgreSQL DriverとMyBatisはWorker側には含めない。
+     */
+    workerOnlyImplementation 'org.springframework.boot:spring-boot-starter-jdbc'
 
 	// Spring Security + OAuth2 Resource Server
-	implementation 'org.springframework.boot:spring-boot-starter-security'
-	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    // Servlet版HttpSecurityを使用するため、API Lambdaだけに含める。
+	apiOnlyImplementation 'org.springframework.boot:spring-boot-starter-security'
+	apiOnlyImplementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 	
 	// MyBatis + PostgreSQL
-	implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
-	runtimeOnly 'org.postgresql:postgresql'
+    // DBへアクセスするAPI Lambdaだけに含める。
+	apiOnlyImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+	apiOnlyRuntime 'org.postgresql:postgresql'
 	
 	// OpenAPI (Swagger) UI
-	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+    // Controllerを公開するAPI Lambdaだけに含める。
+	apiOnlyImplementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
 	// Lambda + API Gateway 連携用
-	implementation "com.amazonaws.serverless:aws-serverless-java-container-springboot4:3.0.2"
+    // API GatewayのリクエストをSpring MVCへ渡すAPI Lambda専用ライブラリ。
+	apiOnlyImplementation "com.amazonaws.serverless:aws-serverless-java-container-springboot4:3.0.2"
 
     /*
      * Springコンポーネント候補をコンパイル時に索引化する。
@@ -52,20 +170,33 @@ dependencies {
      */
     annotationProcessor 'org.springframework:spring-context-indexer'
 
+    /*
+     * Lambda用SourceSetはmainとは別にコンパイルされるため、
+     * Annotation ProcessorもSourceSetごとに指定する。
+     */
+    apiLambdaAnnotationProcessor 'org.springframework:spring-context-indexer'
+    workerLambdaAnnotationProcessor 'org.springframework:spring-context-indexer'
+
     // Lambda Event型を使う場合
-	implementation "com.amazonaws:aws-lambda-java-events:3.16.1"
+    // SQSEventとSQSBatchResponseを使用するWorker Lambdaだけに含める。
+	workerOnlyImplementation "com.amazonaws:aws-lambda-java-events:3.16.1"
 
     // AWS SDK v2
-	implementation platform("software.amazon.awssdk:bom:2.41.32")
-	implementation "software.amazon.awssdk:s3"
-	implementation "software.amazon.awssdk:ssm"
-	implementation "software.amazon.awssdk:secretsmanager"
-	implementation "software.amazon.awssdk:sqs"
+    // APIとWorkerでAWS SDKのバージョンを統一する。
+	lambdaCommonImplementation platform("software.amazon.awssdk:bom:2.41.32")
+	// APIはジョブ登録・結果取得、WorkerはSQS・S3処理に使用する。
+	lambdaCommonImplementation "software.amazon.awssdk:s3"
+	lambdaCommonImplementation "software.amazon.awssdk:sqs"
+	// SSMとSecrets ManagerはAPI Lambdaの起動時だけ使用する。
+	apiOnlyImplementation "software.amazon.awssdk:ssm"
+	apiOnlyImplementation "software.amazon.awssdk:secretsmanager"
 
 	// 開発用ツール
+    // developmentOnlyはLambda用RuntimeClasspathには含めない。
 	developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
 	// テスト用
+    // テストは従来どおりmain SourceSetを対象とする。
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
@@ -80,45 +211,158 @@ tasks.named('test') {
 /*
  * Lambdaデプロイ用ZIP。
  *
- * ZIP構造:
+ * API LambdaとWorker Lambdaで依存関係が異なるため、
+ * それぞれ別のZIPを作成する。
  *
- * musicflows-lambda.zip
+ * API Lambda ZIP構造:
+ *
+ * musicflows-api-lambda.zip
  * ├── com/jws/musicflows/...
- * ├── application.yml
+ * ├── application.yaml
+ * ├── application-lambda.yml
+ * ├── mapper/...
  * └── lib/
  *     ├── spring-*.jar
  *     ├── aws-*.jar
  *     └── postgresql-*.jar
- */tasks.register('buildLambdaZip', Zip) {
+ */
+tasks.register('buildApiLambdaZip', Zip) {
 
 	// Lambda デプロイ用 ZIP の作成は、コンパイル後に行う
-    dependsOn tasks.named('classes')
+    // mainではなく、API Lambda専用SourceSetをコンパイルする。
+    dependsOn tasks.named(sourceSets.apiLambda.classesTaskName)
 
     // ZIP のファイル名と出力先を指定する
-    archiveFileName.set('musicflows-lambda.zip')
+    archiveFileName.set('musicflows-api-lambda.zip')
 	// ZIP の出力先を build/distributions に指定する
     destinationDirectory.set(
         layout.buildDirectory.dir('distributions')
     )
 
     // ZIP のルートに、コンパイル済みクラスとリソースを配置する
-    from sourceSets.main.output
+    // API側のクラスとリソースだけを配置する。
+    from sourceSets.apiLambda.output
 
 
    /*
      * 本番実行用の依存JARだけをlibへ配置する。
      *
-     * productionRuntimeClasspathを使うことで、
-     * developmentOnlyのDevToolsなどを除外する。
+     * 以前はproductionRuntimeClasspathを使用していたが、
+     * APIとWorkerの依存関係が混在するため、
+     * API専用のapiLambdaRuntimeClasspathを使用する。
+     * developmentOnlyのDevToolsなども含まれない。
      */
     into('lib') {
-        from(configurations.productionRuntimeClasspath) {
+        from(configurations.apiLambdaRuntimeClasspath) {
             
 			// Tomcatの埋め込みJARを除外する
             exclude 'tomcat-embed-*.jar'
         }
     }
+
+    // 同名ファイルが重複した場合のZIP生成失敗を防止する。
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 	
+}
+
+/*
+ * Worker Lambdaデプロイ用ZIP。
+ *
+ * musicflows-worker-lambda.zip
+ * ├── com/jws/musicworker/...
+ * ├── application-worker-lambda.yml
+ * └── lib/
+ *     ├── spring-cloud-function-*.jar
+ *     ├── aws-lambda-java-events-*.jar
+ *     └── aws-sdk-*.jar
+ */
+tasks.register('buildWorkerLambdaZip', Zip) {
+
+    // Worker Lambda専用SourceSetを先にコンパイルする。
+    dependsOn tasks.named(sourceSets.workerLambda.classesTaskName)
+
+    // API Lambdaとは異なるZIPファイル名を使用する。
+    archiveFileName.set('musicflows-worker-lambda.zip')
+
+    // API用ZIPと同じbuild/distributionsへ出力する。
+    destinationDirectory.set(
+        layout.buildDirectory.dir('distributions')
+    )
+
+    // Worker側のクラスとLambda用リソースだけを配置する。
+    from sourceSets.workerLambda.output
+
+    // Spring Cloud Functionを含むWorker専用依存JARを配置する。
+    into('lib') {
+        from configurations.workerLambdaRuntimeClasspath
+    }
+
+    // 同名ファイルが重複した場合のZIP生成失敗を防止する。
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+/*
+ * API LambdaへWorker用依存関係が再混入していないことと、
+ * Worker LambdaにAWS Adapterが存在することを検証する。
+ */
+tasks.register('verifyLambdaDependencySeparation') {
+
+    group = 'verification'
+    description = 'Verify API and Worker Lambda dependency separation'
+
+    doLast {
+        // API Lambdaへ含まれるJAR名を取得する。
+        def apiJarNames = configurations.apiLambdaRuntimeClasspath.files.collect { it.name }
+
+        // API LambdaではSpring Cloud FunctionとWebFluxを禁止する。
+        def forbiddenApiJars = apiJarNames.findAll { jarName ->
+            jarName.startsWith('spring-cloud-function-') ||
+                jarName.startsWith('spring-webflux-')
+        }
+
+        if (!forbiddenApiJars.isEmpty()) {
+            throw new GradleException(
+                "Worker dependencies are included in API Lambda: ${forbiddenApiJars}"
+            )
+        }
+
+        // Worker Lambdaへ含まれるJAR名を取得する。
+        def workerJarNames = configurations.workerLambdaRuntimeClasspath.files.collect { it.name }
+
+        // FunctionInvokerの実行に必要なAWS Adapterの存在を確認する。
+        def hasWorkerAdapter = workerJarNames.any { jarName ->
+            jarName.startsWith('spring-cloud-function-adapter-aws-')
+        }
+
+        if (!hasWorkerAdapter) {
+            throw new GradleException(
+                'Spring Cloud Function AWS Adapter is missing from Worker Lambda'
+            )
+        }
+
+        // 検証成功時に、それぞれの依存JAR数を表示する。
+        logger.lifecycle(
+            'Lambda dependency separation verified: API={} JARs, Worker={} JARs',
+            apiJarNames.size(),
+            workerJarNames.size()
+        )
+    }
+}
+
+/*
+ * API LambdaとWorker LambdaのZIPを一括作成するタスク。
+ */
+tasks.register('buildLambdaZips') {
+
+    group = 'build'
+    description = 'Build API and Worker Lambda deployment ZIPs'
+
+    // ZIP作成時に依存関係の分離も必ず検証する。
+    dependsOn(
+        tasks.named('verifyLambdaDependencySeparation'),
+        tasks.named('buildApiLambdaZip'),
+        tasks.named('buildWorkerLambdaZip')
+    )
 }
 
 
