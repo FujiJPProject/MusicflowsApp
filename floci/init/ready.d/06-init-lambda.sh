@@ -49,18 +49,18 @@ COGNITO_APP_CLIENT_ID="$(
 )"
 
 # JWTのiss claimと比較する値。
-# Flociが発行するJWTでは、現在 http://localhost:4566/<UserPoolId>
-# がissとして設定されているため、ホスト側URLを使用する。
 #
-# この値はJWTのclaim検証に使うだけなので、LambdaからlocalhostへHTTPアクセスする必要はない。
-
-COGNITO_ISSUER_URI="${AWS_EDGE_HOST_URL}/${COGNITO_USER_POOL_ID}"
+# docker-compose.ymlでFLOCI_HOSTNAME=flociを設定しているため、
+# Flociが発行するJWTのissは次の形式になる。
+#
+# http://floci:4566/<UserPoolId>
+#
+# issuer-uriはJWTの文字列比較に使用するため、
+# トークンに設定された値と完全に一致させる。
+COGNITO_ISSUER_URI="${AWS_EDGE_INTERNAL_URL}/${COGNITO_USER_POOL_ID}"
 
 # JWT署名検証用JWKS。
-#
-# こちらはLambda実行コンテナから実際にHTTPアクセスする必要がある。
-#
-# Lambdaコンテナ内のlocalhostはFlociではないため、Docker内部URL http://floci:4566 を使用する。
+# Lambda実行コンテナから接続可能なDocker内部URLを使用する。
 COGNITO_JWK_SET_URI="${AWS_EDGE_INTERNAL_URL}/${COGNITO_USER_POOL_ID}/.well-known/jwks.json"
 
 
