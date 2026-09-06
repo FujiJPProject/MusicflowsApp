@@ -1,0 +1,146 @@
+.job-test-page {
+  width: min(880px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.job-test-page h1 {
+  margin-bottom: 8px;
+}
+
+.job-test-page > p,
+.job-test-page > nav {
+  margin-bottom: 24px;
+}
+
+.job-test-page section {
+  padding: 24px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.job-test-page dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 16px 0 0;
+}
+
+.job-test-page dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.job-test-page form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.job-test-page label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-h);
+}
+
+.job-test-page input,
+.job-test-page textarea,
+.job-test-page button {
+  font: inherit;
+}
+
+.job-test-page input,
+.job-test-page textarea {
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.job-test-page textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.job-test-page button {
+  width: fit-content;
+  padding: 10px 18px;
+  color: white;
+  background: var(--accent);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.job-test-page button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.job-test-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 0;
+  margin: 20px 0 0;
+  list-style: none;
+}
+
+.job-test-flow li {
+  padding: 14px 10px;
+  color: var(--text);
+  text-align: center;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.job-test-flow li[data-state="active"] {
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+
+.job-test-flow li[data-state="done"] {
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.job-test-result pre,
+.job-test-error pre {
+  padding: 16px;
+  margin: 16px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--code-bg);
+  border-radius: 8px;
+}
+
+.job-test-error {
+  border-color: #d14343 !important;
+}
+
+@media (max-width: 640px) {
+  .job-test-page {
+    padding: 20px;
+  }
+
+  .job-test-page section {
+    padding: 18px;
+  }
+
+  .job-test-flow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .job-test-page dl {
+    grid-template-columns: 1fr;
+  }
+}

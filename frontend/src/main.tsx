@@ -13,6 +13,9 @@ import App from './App.tsx'
 import AuthTestPage
   from "./pages/auth/AuthTestPage.tsx";
 
+import JobTestPage
+  from "./pages/jobtest/JobTestPage.tsx";
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
 
@@ -30,6 +33,12 @@ createRoot(document.getElementById('root')!).render(
         <Route
           path="/auth-test"
           element={<AuthTestPage />}
+        />
+
+        {/* SQS / Worker Lambda / S3 疎通確認 */}
+        <Route
+          path="/jobtest"
+          element={<JobTestPage />}
         />
 
       </Routes>

@@ -1,4 +1,5 @@
 import { useMemo,useState,type FormEvent } from 'react'
+import { Link } from "react-router-dom";
 import { TestsApi,type Tests,} from "./api/test/testsApi";
 import {loadRuntimeConfig,type RuntimeConfig,} from "./config/runtimeConfig";
 import './App.css'
@@ -88,6 +89,12 @@ function App() {
   return (
     <main>
       <h1>Musicflows 疎通確認</h1>
+
+      <p>
+        <Link to="/jobtest">
+          SQS / Lambda / S3 疎通確認画面へ
+        </Link>
+      </p>
 
       <section>
         <h2>1. ランタイム設定</h2>

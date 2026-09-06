@@ -264,6 +264,10 @@ export default function AuthTestPage() {
         <Link to="/">
           第1段階の画面へ戻る
         </Link>
+        {" / "}
+        <Link to="/jobtest">
+          SQS / Lambda / S3 疎通確認画面へ
+        </Link>
       </p>
 
 
