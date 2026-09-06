@@ -34,6 +34,7 @@ APP_CLIENT_ID="$(aws ssm get-parameter \
 cat > "${OUTPUT_FILE}" <<EOF
 {
   "apiBaseUrl": "${API_BASE_URL}",
+  "directApiBaseUrl": "http://localhost:8080",
   "cognitoUserPoolId": "${USER_POOL_ID}",
   "cognitoClientId": "${APP_CLIENT_ID}",
   "awsRegion": "ap-northeast-1",

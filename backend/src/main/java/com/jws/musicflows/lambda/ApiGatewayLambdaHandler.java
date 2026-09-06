@@ -1,15 +1,11 @@
 package com.jws.musicflows.lambda;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-
 import com.amazonaws.serverless.exceptions.ContainerInitializationException;
 import com.amazonaws.serverless.proxy.model.AwsProxyRequest;
 import com.amazonaws.serverless.proxy.model.AwsProxyResponse;
 import com.amazonaws.serverless.proxy.spring.SpringBootLambdaContainerHandler;
 import com.amazonaws.services.lambda.runtime.Context;
-import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
+import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.jws.musicflows.MusicflowsApplication;
 
 
@@ -34,7 +30,7 @@ import com.jws.musicflows.MusicflowsApplication;
  * API Gateway のレスポンス
  * </pre>
  */
-public class ApiGatewayLambdaHandler implements RequestStreamHandler {
+public class ApiGatewayLambdaHandler implements RequestHandler<AwsProxyRequest, AwsProxyResponse> {
 
     /**
      * Spring Boot アプリケーションを Lambda 上で実行するためのコンテナハンドラー。
@@ -44,7 +40,7 @@ public class ApiGatewayLambdaHandler implements RequestStreamHandler {
      * Spring Boot の初期化済みコンテキストを再利用できます。
      * </p>
      */
-    private static final SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> handler;
+    private static final SpringBootLambdaContainerHandler<AwsProxyRequest, AwsProxyResponse> Handler;
 
     /**
      * Lambda ハンドラーの初期化処理。
@@ -57,27 +53,27 @@ public class ApiGatewayLambdaHandler implements RequestStreamHandler {
      */
     static {
         try {
-            handler = SpringBootLambdaContainerHandler.getAwsProxyHandler(MusicflowsApplication.class);
+            Handler = SpringBootLambdaContainerHandler.getAwsProxyHandler(
+                MusicflowsApplication.class);
+
         } catch (ContainerInitializationException e) {
             throw new RuntimeException("Spring Boot Lambda initialization failed", e);
         }
     }
 
-    /**
-     * Lambda 関数に渡されたリクエストを処理します。
-     *
-     * <p>
-     * API Gateway から渡された入力ストリームを Spring Boot 側へ転送し、
-     * Spring Boot の処理結果を出力ストリームへ書き込みます。
-     * </p>
-     *
-     * @param inputStream  API Gateway から渡されるリクエストの入力ストリーム
-     * @param outputStream API Gateway へ返却するレスポンスの出力ストリーム
-     * @param context      Lambda の実行コンテキスト
-     * @throws IOException 入出力処理でエラーが発生した場合
-     */
     @Override
-    public void handleRequest(InputStream inputStream, OutputStream outputStream, Context context) throws IOException {
-        handler.proxyStream(inputStream, outputStream, context);
+    public AwsProxyResponse handleRequest(
+            AwsProxyRequest request,
+            Context context
+    ) {
+
+        /*
+         * GET / POST / PUT / DELETEなどを
+         * Spring Bootへ委譲する。
+         *
+         * ブラウザのCORS preflightは
+         * Floci自身のGlobal CORSで処理する。
+         */
+        return Handler.proxy(request, context);
     }
 }

@@ -1,0 +1,21 @@
+spring:
+  main:
+    # Lambda WorkerなのでWebサーバー不要
+    web-application-type: none
+
+  cloud:
+    function:
+      definition: musicJobWorker
+
+aws:
+  region: ${AWS_REGION:ap-northeast-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:}
+
+app:
+  worker:
+    bucket-name: ${FILE_BUCKET}
+
+logging:
+  level:
+    root: INFO
+    com.jws.musicworker: INFO

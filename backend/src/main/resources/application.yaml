@@ -1,3 +1,32 @@
 spring:
   application:
     name: musicflows
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true # スネークケースのカラム名をキャメルケースのプロパティ名にマッピングするための設定
+
+aws:
+  region: ${AWS_REGION:ap-northeast-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:}
+
+app:
+  cors:
+    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+
+  security:
+    cognito:
+      # JWTのiss claimとして期待する値
+      issuer-uri: "${COGNITO_ISSUER_URI:}"
+  
+      # JWT署名検証用の公開鍵取得先
+      jwk-set-uri: "${COGNITO_JWK_SET_URI:}"
+  
+      # Access Tokenを発行したApp Clientを検証する
+      client-id: "${COGNITO_APP_CLIENT_ID:}"
+  
+  music-job:
+    queue-name: ${SQS_QUEUE_NAME:music-app-local-music-jobs}
+    bucket-name: ${FILE_BUCKET:music-app-local-files}
+    result-prefix: worker-results

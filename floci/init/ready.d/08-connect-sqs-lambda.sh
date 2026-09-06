@@ -6,35 +6,64 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 
 log "Lambda Event Source" "Initialization started."
 
-# SQS キューの URLの取得
-QUEUE_URL="$(aws_local sqs get-queue-url \
-  --queue-name "${QUEUE_NAME}" \
-  --query QueueUrl \
-  --output text)"
+#  キューのURLを取得する。
+QUEUE_URL="$(
+  aws_local sqs get-queue-url \
+    --queue-name "${QUEUE_NAME}" \
+    --query QueueUrl \
+    --output text
+)"
 
-# SQS キューの ARN の取得
-QUEUE_ARN="$(aws_local sqs get-queue-attributes \
-  --queue-url "${QUEUE_URL}" \
-  --attribute-names QueueArn \
-  --query Attributes.QueueArn \
-  --output text)"
+# キューのARNを取得する。
+QUEUE_ARN="$(
+  aws_local sqs get-queue-attributes \
+    --queue-url "${QUEUE_URL}" \
+    --attribute-names QueueArn \
+    --query Attributes.QueueArn \
+    --output text
+)"
 
-# Lambda 関数と SQS キューのイベントソースマッピングの作成 (存在しない場合)
-MAPPING_ID="$(aws_local lambda list-event-source-mappings \
-  --function-name "${WORKER_FUNCTION_NAME}" \
-  --event-source-arn "${QUEUE_ARN}" \
-  --query "EventSourceMappings[0].UUID" \
-  --output text)"
+# LambdaのEvent Source Mappingを取得する。
+MAPPING_ID="$(
+  aws_local lambda list-event-source-mappings \
+    --function-name "${WORKER_FUNCTION_NAME}" \
+    --event-source-arn "${QUEUE_ARN}" \
+    --query "EventSourceMappings[0].UUID" \
+    --output text
+)"
 
+#  mappingが存在しない場合は、AWS CLIの戻り値が "None" になるので、空文字列に変換する。
 if is_missing_aws_value "${MAPPING_ID}"; then
+
+  # ----------------------------------------------------------
+  # 新規作成
+  # ----------------------------------------------------------
+
   aws_local lambda create-event-source-mapping \
     --function-name "${WORKER_FUNCTION_NAME}" \
     --event-source-arn "${QUEUE_ARN}" \
-    --batch-size 10 \
+    --batch-size 1 \
+    --function-response-types ReportBatchItemFailures \
     >/dev/null
+
   log "Lambda Event Source" "Mapping created."
+
 else
-  log "Lambda Event Source" "Mapping already exists."
+
+  # ----------------------------------------------------------
+  # 既存Mappingについても設定を収束させる
+  # ----------------------------------------------------------
+
+  aws_local lambda update-event-source-mapping \
+    --uuid "${MAPPING_ID}" \
+    --batch-size 1 \
+    --function-response-types ReportBatchItemFailures \
+    --enabled \
+    >/dev/null
+
+  log "Lambda Event Source" "Mapping updated."
+
 fi
+
 
 log "Lambda Event Source" "Initialization completed."

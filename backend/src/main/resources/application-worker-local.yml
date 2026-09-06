@@ -1,0 +1,22 @@
+spring:
+  main:
+    # ローカルWorkerもHTTP Serverは不要。
+    web-application-type: none
+
+  cloud:
+    function:
+      definition: musicJobWorker
+
+aws:
+  region: ${AWS_REGION:ap-northeast-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:http://floci:4566}
+
+app:
+  worker:
+    bucket-name: ${FILE_BUCKET:music-app-local-files}
+    queue-name: ${SQS_QUEUE_NAME:music-app-local-music-jobs}
+
+logging:
+  level:
+    root: INFO
+    com.jws.musicworker: DEBUG
