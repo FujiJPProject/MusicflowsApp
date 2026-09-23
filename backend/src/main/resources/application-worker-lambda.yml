@@ -15,6 +15,9 @@ app:
   worker:
     bucket-name: ${FILE_BUCKET}
 
+    # S3結果とログへ記録するWorker種別。
+    processor-type: ${WORKER_PROCESSOR_TYPE:LAMBDA}
+
 logging:
   level:
     root: INFO

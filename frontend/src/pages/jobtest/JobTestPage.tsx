@@ -27,6 +27,8 @@ const MAX_POLLING_ATTEMPTS = 30;
 
 type FlowState = "waiting" | "queued" | "processing" | "completed";
 
+type WorkerMode = "local-worker" | "lambda";
+
 function toMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -99,6 +101,7 @@ export default function JobTestPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const pollingController = useRef<AbortController | null>(null);
+  const [workerMode, setWorkerMode] = useState<WorkerMode>("lambda");
 
   useEffect(() => {
     loadRuntimeConfig()
@@ -113,15 +116,31 @@ export default function JobTestPage() {
   }, []);
 
   const api = useMemo(() => {
-    if (!config || !session) {
+    if (!config) {
       return null;
     }
 
+      /*
+     * Local Workerモード。
+     * Spring Bootへ直接接続するため、Cognito Access Tokenは使用しない。
+     */
+    if (workerMode === "local-worker") {
+      return new JobTestApi(config.directApiBaseUrl);
+    }
+
+    if (!session) {
+      return null;
+    }
+
+    /*
+    * Lambdaモード。
+    * API Gateway / API Lambda経由なので、Cognito Access Tokenが必要。
+    */
     return new JobTestApi(
       config.apiBaseUrl,
       session.accessToken,
     );
-  }, [config, session]);
+  }, [config, session, workerMode]);
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -161,13 +180,42 @@ export default function JobTestPage() {
     setMessage("ログアウトしました");
   };
 
+  const changeWorkerMode = (
+    nextMode: WorkerMode,
+  ) => {
+
+    /*
+     * 実行中のpollingがあれば停止する。
+     */
+    pollingController.current?.abort();
+
+    setWorkerMode(nextMode);
+
+    /*
+     * 前回モードの結果を残すと、
+     * Local/Lambdaのどちらの結果か判断しづらくなるため、
+     * モード変更時に画面状態を初期化する。
+     */
+    setCreatedJob(null);
+    setCompletedResult(null);
+    setFlowState("waiting");
+    setPollingAttempt(0);
+    setIsRunning(false);
+    setError("");
+    setMessage("");
+  };
+
   const runConnectionTest = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
 
     if (!api) {
-      setError("先にCognitoへログインしてください");
+      if (workerMode === "lambda") {
+        setError("Lambdaモードでは先にCognitoへログインしてください");
+      } else {
+        setError("Spring Boot直接接続用のAPI設定を確認してください");
+      }
       return;
     }
 
@@ -212,11 +260,37 @@ export default function JobTestPage() {
         );
 
         if (result.status === "COMPLETED") {
+                
           setCompletedResult(result);
+                
+          const expectedProcessorType = workerMode === "local-worker"
+                                      ? "LOCAL_WORKER"
+                                      : "LAMBDA";
+
+          /*
+           * S3へ保存されたprocessorTypeを正とする。
+           * 画面でLocal Workerを選択していても、実際にLambdaが処理していた場合は成功扱いにしない。
+           */
+          if (result.processorType !== expectedProcessorType) {
+          
+            throw new Error(
+              [
+                "期待したWorkerと実際に処理したWorkerが一致しません",
+                `expected=${expectedProcessorType}`,
+                `actual=${result.processorType}`,
+                `jobId=${result.jobId}`,
+                `sqsMessageId=${result.sqsMessageId}`,
+              ].join(", "),
+            );
+          }
+        
           setFlowState("completed");
-          setMessage(
-            "疎通確認に成功しました。Lambdaの処理結果をS3から取得できました。",
-          );
+        
+          if (result.processorType === "LOCAL_WORKER") {
+            setMessage("疎通確認に成功しました。Local Workerの処理結果をS3から取得できました。");
+          } else {
+            setMessage("疎通確認に成功しました。Worker Lambdaの処理結果をS3から取得できました。");
+          }
           return;
         }
 
@@ -255,7 +329,9 @@ export default function JobTestPage() {
     <main className="job-test-page">
       <h1>非同期ジョブ疎通確認</h1>
       <p>
-        画面からジョブを登録し、SQS → Worker Lambda → S3の処理結果を確認します。
+        画面からジョブを登録し、
+        SQS → Local Worker / Worker Lambda → S3
+        の処理結果を確認します。
       </p>
 
       <nav>
@@ -280,7 +356,13 @@ export default function JobTestPage() {
 
       <section>
         <h2>2. Cognitoログイン</h2>
-        {!session ? (
+        {workerMode === "local-worker" ? (      
+            <p>
+              Local Workerモードでは
+              Spring Bootへ直接接続するため、
+              Cognitoログインは不要です。
+            </p>
+        ) :!session ? (
           <form onSubmit={login}>
             <label>
               ユーザー名
@@ -321,7 +403,54 @@ export default function JobTestPage() {
       </section>
 
       <section>
-        <h2>3. ジョブ実行</h2>
+        <h2>3. Worker実行モード</h2>
+
+        <label>
+          <input
+            type="radio"
+            name="worker-mode"
+            value="local-worker"
+            checked={workerMode === "local-worker"}
+            disabled={isRunning}
+            onChange={() => changeWorkerMode("local-worker")}
+          />
+          Local Worker
+        </label>
+          
+        <label>
+          <input
+            type="radio"
+            name="worker-mode"
+            value="lambda"
+            checked={workerMode === "lambda"}
+            disabled={isRunning}
+            onChange={() => changeWorkerMode("lambda")}
+          />
+          Floci Worker Lambda
+        </label>
+          
+        {config && (
+          <dl>
+            <dt>現在のAPI接続先</dt>
+        
+            <dd>
+              {workerMode === "local-worker"
+                ? config.directApiBaseUrl
+                : config.apiBaseUrl}
+            </dd>
+              
+            <dt>期待するWorker</dt>
+              
+            <dd>
+              {workerMode === "local-worker"
+                ? "LOCAL_WORKER"
+                : "LAMBDA"}
+            </dd>
+          </dl>
+        )}
+      </section>
+      <section>
+        <h2>4. ジョブ実行</h2>
         <form onSubmit={runConnectionTest}>
           <label>
             payload
@@ -348,7 +477,7 @@ export default function JobTestPage() {
             SQS
           </li>
           <li data-state={stepState(flowState, "processing")}>
-            Lambda
+            {workerMode === "local-worker" ? "Local Worker" : "Worker Lambda"}
           </li>
           <li data-state={stepState(flowState, "completed")}>
             S3

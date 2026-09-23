@@ -101,6 +101,7 @@ environment = {
         "AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
         "FILE_BUCKET": "${FILE_BUCKET}"
+        "WORKER_PROCESSOR_TYPE": "LAMBDA"
     }
 }
 
