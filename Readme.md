@@ -455,6 +455,31 @@ key=worker-results/<JOB_ID>.json
 ```shell
 docker compose --profile worker-local down
 docker compose pull floci
-WORKER_EXECUTION_MODE=local 
+WORKER_EXECUTION_MODE=local \
 docker compose --profile worker-local up -d
+```
+
+```shell
+docker compose logs floci \
+  | grep '\[Frontend Config\] Export completed.'
+```
+
+
+```shell
+docker compose exec floci \
+  aws \
+  --endpoint-url http://localhost:4566 \
+  --region ap-northeast-1 \
+  lambda list-event-source-mappings \
+  --function-name music-app-local-music-job-worker \
+  --query 'EventSourceMappings[].{UUID:UUID,State:State}'
+```
+
+```text
+[
+    {
+        "UUID": "XXXX",
+        "State": "Disabled"
+    }
+]
 ```
