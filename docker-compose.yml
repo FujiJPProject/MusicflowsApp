@@ -191,9 +191,6 @@ services:
       FILE_BUCKET: music-app-local-files
       SQS_QUEUE_NAME: music-app-local-music-jobs
 
-      # S3結果・ログから実際に処理したWorkerを識別するための値。
-      WORKER_PROCESSOR_TYPE: LOCAL_WORKER
-
     depends_on:
       floci:
         condition: service_started

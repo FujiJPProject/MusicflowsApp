@@ -10,22 +10,7 @@ log "Lambda Event Source" "Initialization started."
 # Worker実行モードの妥当性確認
 # ------------------------------------------------------------
 
-case "${WORKER_EXECUTION_MODE}" in
-  local|lambda)
-    ;;
-  *)
-    log \
-      "Lambda Event Source" \
-      "Invalid WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE}"
-
-    log \
-      "Lambda Event Source" \
-      "Allowed values are: local, lambda"
-
-    exit 1
-    ;;
-esac
-
+validate_worker_execution_mode
 
 # ------------------------------------------------------------
 # SQS Queue URL取得

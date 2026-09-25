@@ -27,8 +27,6 @@ const MAX_POLLING_ATTEMPTS = 30;
 
 type FlowState = "waiting" | "queued" | "processing" | "completed";
 
-type WorkerMode = "local-worker" | "lambda";
-
 function toMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
@@ -101,7 +99,7 @@ export default function JobTestPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const pollingController = useRef<AbortController | null>(null);
-  const [workerMode, setWorkerMode] = useState<WorkerMode>("lambda");
+  const isLocalWorker = config?.workerExecutionMode === "local";
 
   useEffect(() => {
     loadRuntimeConfig()
@@ -115,32 +113,34 @@ export default function JobTestPage() {
     };
   }, []);
 
-  const api = useMemo(() => {
-    if (!config) {
-      return null;
-    }
+    const api = useMemo(() => {
 
-      /*
-     * Local Workerモード。
-     * Spring Bootへ直接接続するため、Cognito Access Tokenは使用しない。
-     */
-    if (workerMode === "local-worker") {
-      return new JobTestApi(config.directApiBaseUrl);
-    }
+       if (!config) {
+         return null;
+       }
 
-    if (!session) {
-      return null;
-    }
+       /*
+        * Local Workerモードでは、
+        * Spring Bootへ直接接続する。Cognito Access Tokenは使用しない。
+        */
+       if (config.workerExecutionMode === "local") {
+         return new JobTestApi(
+           config.directApiBaseUrl,
+         );
+       }
 
-    /*
-    * Lambdaモード。
-    * API Gateway / API Lambda経由なので、Cognito Access Tokenが必要。
-    */
-    return new JobTestApi(
-      config.apiBaseUrl,
-      session.accessToken,
-    );
-  }, [config, session, workerMode]);
+       /*
+        * LambdaモードではCognito認証が必要。
+        */
+       if (!session) {
+         return null;
+       }
+   
+       return new JobTestApi(
+         config.apiBaseUrl,
+         session.accessToken,
+       );
+    }, [config, session]);
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -180,42 +180,24 @@ export default function JobTestPage() {
     setMessage("ログアウトしました");
   };
 
-  const changeWorkerMode = (
-    nextMode: WorkerMode,
-  ) => {
-
-    /*
-     * 実行中のpollingがあれば停止する。
-     */
-    pollingController.current?.abort();
-
-    setWorkerMode(nextMode);
-
-    /*
-     * 前回モードの結果を残すと、
-     * Local/Lambdaのどちらの結果か判断しづらくなるため、
-     * モード変更時に画面状態を初期化する。
-     */
-    setCreatedJob(null);
-    setCompletedResult(null);
-    setFlowState("waiting");
-    setPollingAttempt(0);
-    setIsRunning(false);
-    setError("");
-    setMessage("");
-  };
-
+  
   const runConnectionTest = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
 
     if (!api) {
-      if (workerMode === "lambda") {
-        setError("Lambdaモードでは先にCognitoへログインしてください");
-      } else {
-        setError("Spring Boot直接接続用のAPI設定を確認してください");
+      if (!config) {
+        setError("Runtime Configを読み込めていません");
+        return;
       }
+    
+      if (config.workerExecutionMode === "lambda") {
+        setError("Lambdaモードでは先にCognitoへログインしてください");
+        return;
+      }
+    
+      setError("Spring Boot直接接続用のAPI設定を確認してください");
       return;
     }
 
@@ -263,9 +245,9 @@ export default function JobTestPage() {
                 
           setCompletedResult(result);
                 
-          const expectedProcessorType = workerMode === "local-worker"
-                                      ? "LOCAL_WORKER"
-                                      : "LAMBDA";
+          const expectedProcessorType = config?.workerExecutionMode === "local"
+                                        ? "LOCAL_WORKER"
+                                        : "LAMBDA";
 
           /*
            * S3へ保存されたprocessorTypeを正とする。
@@ -305,7 +287,11 @@ export default function JobTestPage() {
       }
 
       throw new Error(
-        "60秒以内に処理が完了しませんでした。SQS、Worker Lambda、S3の状態を確認してください。",
+        [
+          "60秒以内に処理が完了しませんでした。",
+          "SQS、Worker、S3の状態を確認してください。",
+          `workerExecutionMode=${config?.workerExecutionMode}`,
+        ].join(" "),
       );
     } catch (cause) {
       if (
@@ -356,13 +342,9 @@ export default function JobTestPage() {
 
       <section>
         <h2>2. Cognitoログイン</h2>
-        {workerMode === "local-worker" ? (      
-            <p>
-              Local Workerモードでは
-              Spring Bootへ直接接続するため、
-              Cognitoログインは不要です。
-            </p>
-        ) :!session ? (
+        {isLocalWorker ? (
+          <p>Local WorkerモードではSpring Bootへ直接接続するため、Cognitoログインは不要です。</p>
+            ) : !session ? (
           <form onSubmit={login}>
             <label>
               ユーザー名
@@ -404,49 +386,31 @@ export default function JobTestPage() {
 
       <section>
         <h2>3. Worker実行モード</h2>
-
-        <label>
-          <input
-            type="radio"
-            name="worker-mode"
-            value="local-worker"
-            checked={workerMode === "local-worker"}
-            disabled={isRunning}
-            onChange={() => changeWorkerMode("local-worker")}
-          />
-          Local Worker
-        </label>
-          
-        <label>
-          <input
-            type="radio"
-            name="worker-mode"
-            value="lambda"
-            checked={workerMode === "lambda"}
-            disabled={isRunning}
-            onChange={() => changeWorkerMode("lambda")}
-          />
-          Floci Worker Lambda
-        </label>
-          
-        {config && (
+        {config ? (
           <dl>
-            <dt>現在のAPI接続先</dt>
-        
+            <dt>現在のWorker</dt>
             <dd>
-              {workerMode === "local-worker"
+              {isLocalWorker ? "Local Worker" : "Floci Worker Lambda"}
+            </dd>
+            <dt>実行モード</dt>
+            <dd>
+              {config.workerExecutionMode}
+            </dd>
+      
+            <dt>現在のAPI接続先</dt>
+            <dd>
+              {isLocalWorker
                 ? config.directApiBaseUrl
                 : config.apiBaseUrl}
             </dd>
-              
-            <dt>期待するWorker</dt>
-              
+      
+            <dt>期待するProcessor</dt>
             <dd>
-              {workerMode === "local-worker"
-                ? "LOCAL_WORKER"
-                : "LAMBDA"}
+              {isLocalWorker ? "LOCAL_WORKER" : "LAMBDA"}
             </dd>
           </dl>
+        ) : (
+          <p>Worker実行モードを確認しています...</p>
         )}
       </section>
       <section>
@@ -477,7 +441,7 @@ export default function JobTestPage() {
             SQS
           </li>
           <li data-state={stepState(flowState, "processing")}>
-            {workerMode === "local-worker" ? "Local Worker" : "Worker Lambda"}
+            {isLocalWorker ? "Local Worker" : "Worker Lambda"}
           </li>
           <li data-state={stepState(flowState, "completed")}>
             S3

@@ -117,3 +117,21 @@ PY
     >/dev/null
 }
 
+validate_worker_execution_mode() {
+
+  case "${WORKER_EXECUTION_MODE}" in local|lambda)
+      return 0
+      ;;
+    *)
+      log \
+        "Worker Mode" \
+        "Invalid WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE}"
+
+      log \
+        "Worker Mode" \
+        "Allowed values are: local, lambda"
+
+      return 1
+      ;;
+  esac
+}

@@ -15,9 +15,7 @@ app:
   worker:
     bucket-name: ${FILE_BUCKET:music-app-local-files}
     queue-name: ${SQS_QUEUE_NAME:music-app-local-music-jobs}
-
-    # S3結果とログへ記録するWorker種別。
-    processor-type: ${WORKER_PROCESSOR_TYPE:LOCAL_WORKER}
+    processor-type: LOCAL_WORKER
     
 logging:
   level:
