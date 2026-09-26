@@ -15,6 +15,11 @@ ENVIRONMENT="${ENVIRONMENT:-local}"
 AWS_REGION="${AWS_REGION:-ap-northeast-1}"
 # AWSアカウントID (ローカル環境ではダミー値)
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-000000000000}"
+
+# SQSメッセージを処理するWorkerの実行モード。
+# lambda:Worker LambdaのEvent Source Mappingを有効にする。
+# local:Worker LambdaのEvent Source Mappingを無効化し、worker-localだけがSQSをpollできる状態にする。
+WORKER_EXECUTION_MODE="${WORKER_EXECUTION_MODE:-lambda}"
 # --------------------------基本設定---------------------------------
 
 # --------------------------Floci の接続先設定---------------------------------
@@ -112,3 +117,21 @@ PY
     >/dev/null
 }
 
+validate_worker_execution_mode() {
+
+  case "${WORKER_EXECUTION_MODE}" in local|lambda)
+      return 0
+      ;;
+    *)
+      log \
+        "Worker Mode" \
+        "Invalid WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE}"
+
+      log \
+        "Worker Mode" \
+        "Allowed values are: local, lambda"
+
+      return 1
+      ;;
+  esac
+}

@@ -99,6 +99,7 @@ export default function JobTestPage() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const pollingController = useRef<AbortController | null>(null);
+  const isLocalWorker = config?.workerExecutionMode === "local";
 
   useEffect(() => {
     loadRuntimeConfig()
@@ -112,16 +113,34 @@ export default function JobTestPage() {
     };
   }, []);
 
-  const api = useMemo(() => {
-    if (!config || !session) {
-      return null;
-    }
+    const api = useMemo(() => {
 
-    return new JobTestApi(
-      config.apiBaseUrl,
-      session.accessToken,
-    );
-  }, [config, session]);
+       if (!config) {
+         return null;
+       }
+
+       /*
+        * Local Workerモードでは、
+        * Spring Bootへ直接接続する。Cognito Access Tokenは使用しない。
+        */
+       if (config.workerExecutionMode === "local") {
+         return new JobTestApi(
+           config.directApiBaseUrl,
+         );
+       }
+
+       /*
+        * LambdaモードではCognito認証が必要。
+        */
+       if (!session) {
+         return null;
+       }
+   
+       return new JobTestApi(
+         config.apiBaseUrl,
+         session.accessToken,
+       );
+    }, [config, session]);
 
   const login = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -161,13 +180,24 @@ export default function JobTestPage() {
     setMessage("ログアウトしました");
   };
 
+  
   const runConnectionTest = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
 
     if (!api) {
-      setError("先にCognitoへログインしてください");
+      if (!config) {
+        setError("Runtime Configを読み込めていません");
+        return;
+      }
+    
+      if (config.workerExecutionMode === "lambda") {
+        setError("Lambdaモードでは先にCognitoへログインしてください");
+        return;
+      }
+    
+      setError("Spring Boot直接接続用のAPI設定を確認してください");
       return;
     }
 
@@ -212,11 +242,37 @@ export default function JobTestPage() {
         );
 
         if (result.status === "COMPLETED") {
+                
           setCompletedResult(result);
+                
+          const expectedProcessorType = config?.workerExecutionMode === "local"
+                                        ? "LOCAL_WORKER"
+                                        : "LAMBDA";
+
+          /*
+           * S3へ保存されたprocessorTypeを正とする。
+           * 画面でLocal Workerを選択していても、実際にLambdaが処理していた場合は成功扱いにしない。
+           */
+          if (result.processorType !== expectedProcessorType) {
+          
+            throw new Error(
+              [
+                "期待したWorkerと実際に処理したWorkerが一致しません",
+                `expected=${expectedProcessorType}`,
+                `actual=${result.processorType}`,
+                `jobId=${result.jobId}`,
+                `sqsMessageId=${result.sqsMessageId}`,
+              ].join(", "),
+            );
+          }
+        
           setFlowState("completed");
-          setMessage(
-            "疎通確認に成功しました。Lambdaの処理結果をS3から取得できました。",
-          );
+        
+          if (result.processorType === "LOCAL_WORKER") {
+            setMessage("疎通確認に成功しました。Local Workerの処理結果をS3から取得できました。");
+          } else {
+            setMessage("疎通確認に成功しました。Worker Lambdaの処理結果をS3から取得できました。");
+          }
           return;
         }
 
@@ -231,7 +287,11 @@ export default function JobTestPage() {
       }
 
       throw new Error(
-        "60秒以内に処理が完了しませんでした。SQS、Worker Lambda、S3の状態を確認してください。",
+        [
+          "60秒以内に処理が完了しませんでした。",
+          "SQS、Worker、S3の状態を確認してください。",
+          `workerExecutionMode=${config?.workerExecutionMode}`,
+        ].join(" "),
       );
     } catch (cause) {
       if (
@@ -255,7 +315,9 @@ export default function JobTestPage() {
     <main className="job-test-page">
       <h1>非同期ジョブ疎通確認</h1>
       <p>
-        画面からジョブを登録し、SQS → Worker Lambda → S3の処理結果を確認します。
+        画面からジョブを登録し、
+        SQS → Local Worker / Worker Lambda → S3
+        の処理結果を確認します。
       </p>
 
       <nav>
@@ -280,7 +342,9 @@ export default function JobTestPage() {
 
       <section>
         <h2>2. Cognitoログイン</h2>
-        {!session ? (
+        {isLocalWorker ? (
+          <p>Local WorkerモードではSpring Bootへ直接接続するため、Cognitoログインは不要です。</p>
+            ) : !session ? (
           <form onSubmit={login}>
             <label>
               ユーザー名
@@ -321,7 +385,36 @@ export default function JobTestPage() {
       </section>
 
       <section>
-        <h2>3. ジョブ実行</h2>
+        <h2>3. Worker実行モード</h2>
+        {config ? (
+          <dl>
+            <dt>現在のWorker</dt>
+            <dd>
+              {isLocalWorker ? "Local Worker" : "Floci Worker Lambda"}
+            </dd>
+            <dt>実行モード</dt>
+            <dd>
+              {config.workerExecutionMode}
+            </dd>
+      
+            <dt>現在のAPI接続先</dt>
+            <dd>
+              {isLocalWorker
+                ? config.directApiBaseUrl
+                : config.apiBaseUrl}
+            </dd>
+      
+            <dt>期待するProcessor</dt>
+            <dd>
+              {isLocalWorker ? "LOCAL_WORKER" : "LAMBDA"}
+            </dd>
+          </dl>
+        ) : (
+          <p>Worker実行モードを確認しています...</p>
+        )}
+      </section>
+      <section>
+        <h2>4. ジョブ実行</h2>
         <form onSubmit={runConnectionTest}>
           <label>
             payload
@@ -348,7 +441,7 @@ export default function JobTestPage() {
             SQS
           </li>
           <li data-state={stepState(flowState, "processing")}>
-            Lambda
+            {isLocalWorker ? "Local Worker" : "Worker Lambda"}
           </li>
           <li data-state={stepState(flowState, "completed")}>
             S3

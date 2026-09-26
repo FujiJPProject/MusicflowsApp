@@ -63,6 +63,11 @@ services:
       PROJECT_NAME: music-app
       ENVIRONMENT: local
 
+      # SQSを処理するWorkerの実行モード。
+      # lambda: Floci Worker LambdaのEvent Source Mappingを有効化する。
+      # local:Worker LambdaのEvent Source Mappingを無効化し、worker-localだけがSQSをpollできる状態にする。
+      WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE:-lambda}
+
       # React開発サーバーのCORS許可用
       FRONTEND_ORIGIN: http://localhost:5173
 
@@ -147,6 +152,9 @@ services:
       - music-app-network
 
   worker-local:
+    profiles:
+    - worker-local
+
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev

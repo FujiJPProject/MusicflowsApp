@@ -1,11 +1,14 @@
 #!/bin/sh
 set -eu
 
-PROJECT_NAME="${PROJECT_NAME:-music-app}"
-ENVIRONMENT="${ENVIRONMENT:-local}"
-PARAMETER_PREFIX="/${PROJECT_NAME}/${ENVIRONMENT}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+. "${SCRIPT_DIR}/00-common.sh"
 
-OUTPUT_DIR="/app/export/frontend-config"
+log "Frontend Config" "Export started."
+
+validate_worker_execution_mode
+
+OUTPUT_DIR="${FRONTEND_CONFIG_OUTPUT_DIR}"
 OUTPUT_FILE="${OUTPUT_DIR}/local-config.json"
 
 echo "[Frontend Config] Export started."
@@ -13,22 +16,22 @@ echo "[Frontend Config] Export started."
 mkdir -p "${OUTPUT_DIR}"
 
 # SSM パラメータストアから API エンドポイント URL と Cognito 設定を取得
-API_BASE_URL="$(aws ssm get-parameter \
-  --name "${PARAMETER_PREFIX}/api-base-url-host" \
-  --query Parameter.Value \
-  --output text)"
+API_BASE_URL="$(
+  get_ssm_parameter \
+    "${PARAMETER_PREFIX}/api-base-url-host"
+)"
 
 # SSM パラメータストアから Cognito ユーザープール ID とアプリクライアント ID を取得
-USER_POOL_ID="$(aws ssm get-parameter \
-  --name "${PARAMETER_PREFIX}/cognito-user-pool-id" \
-  --query Parameter.Value \
-  --output text)"
+USER_POOL_ID="$(
+  get_ssm_parameter \
+    "${PARAMETER_PREFIX}/cognito-user-pool-id"
+)"
 
 # SSM パラメータストアから Cognito アプリクライアント ID を取得
-APP_CLIENT_ID="$(aws ssm get-parameter \
-  --name "${PARAMETER_PREFIX}/cognito-app-client-id" \
-  --query Parameter.Value \
-  --output text)"
+APP_CLIENT_ID="$(
+  get_ssm_parameter \
+    "${PARAMETER_PREFIX}/cognito-app-client-id"
+)"
 
 # フロントエンドで使用する設定を JSON ファイルに出力
 cat > "${OUTPUT_FILE}" <<EOF
@@ -37,10 +40,12 @@ cat > "${OUTPUT_FILE}" <<EOF
   "directApiBaseUrl": "http://localhost:8080",
   "cognitoUserPoolId": "${USER_POOL_ID}",
   "cognitoClientId": "${APP_CLIENT_ID}",
-  "awsRegion": "ap-northeast-1",
-  "cognitoEndpointUrl": "http://localhost:4566"
+  "awsRegion": "${AWS_REGION}",
+  "cognitoEndpointUrl": "http://localhost:4566",
+  "workerExecutionMode": "${WORKER_EXECUTION_MODE}"
 }
 EOF
 
+echo "[Frontend Config] Worker execution mode: ${WORKER_EXECUTION_MODE}"
 echo "[Frontend Config] File created: ${OUTPUT_FILE}"
 echo "[Frontend Config] Export completed."

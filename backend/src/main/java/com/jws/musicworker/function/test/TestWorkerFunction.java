@@ -6,17 +6,16 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-import com.amazonaws.services.lambda.runtime.events.SQSBatchResponse;
-import com.amazonaws.services.lambda.runtime.events.SQSEvent;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.json.JsonParserFactory;
 import org.springframework.boot.json.JsonWriter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import com.amazonaws.services.lambda.runtime.events.SQSBatchResponse;
+import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -32,7 +31,10 @@ public class TestWorkerFunction {
             S3Client workerS3Client,
 
             @Value("${app.worker.bucket-name}")
-            String bucketName
+            String bucketName,
+
+            @Value("${app.worker.processor-type}")
+            String processorType
     ) {
 
         return event -> {
@@ -54,13 +56,16 @@ public class TestWorkerFunction {
                     process(
                         workerS3Client,
                         bucketName,
-                        record
+                        record,
+                        processorType
                     );
 
                 } catch (Exception exception) {
 
                     log.error(
-                            "Music job processing failed: messageId={}",
+                            "Music job processing failed: processorType={}, jobId={}, messageId={}",
+                            processorType,
+                            jobIdForLog(record),
                             record.getMessageId(),
                             exception
                     );
@@ -89,7 +94,8 @@ public class TestWorkerFunction {
     private void process(
             S3Client s3Client,
             String bucketName,
-            SQSEvent.SQSMessage record
+            SQSEvent.SQSMessage record,
+            String processorType
     ) {
 
         // SQSメッセージのJSONをMapに変換する。
@@ -107,6 +113,8 @@ public class TestWorkerFunction {
         result.put("jobId",jobId);
         result.put("status","COMPLETED");
         result.put("requestedBy",requestedBy);
+        result.put("processorType", processorType);
+        result.put("sqsMessageId",record.getMessageId());
 
         /*
          * 疎通確認用処理。
@@ -132,10 +140,12 @@ public class TestWorkerFunction {
 
 
         log.info(
-                "Music job completed: jobId={}, bucket={}, key={}",
-                jobId,
-                bucketName,
-                resultKey
+            "Music job completed: processorType={}, jobId={}, messageId={}, bucket={}, key={}",
+            processorType,
+            jobId,
+            record.getMessageId(),
+            bucketName,
+            resultKey
         );
     }
 
@@ -155,5 +165,36 @@ public class TestWorkerFunction {
         }
 
         return value.toString();
+    }
+
+    /**
+     * Worker処理失敗時のログ出力用にjobIdを安全に取得する。
+     *
+     * JSON自体が壊れている場合やjobIdが存在しない場合でも、
+     * エラーログ処理自体が追加例外を起こさないようにする。
+     *
+     * @param record SQSメッセージ
+     * @return jobId。取得不能な場合はUNKNOWN。
+     */
+    private String jobIdForLog(
+            SQSEvent.SQSMessage record
+    ) {
+
+        try {
+
+            Map<String, Object> values = JsonParserFactory.getJsonParser()
+                                                          .parseMap(record.getBody());
+
+            Object jobId = values.get("jobId");
+
+            if (jobId == null || jobId.toString().isBlank()) {
+                    return "UNKNOWN";
+            }
+
+            return jobId.toString();
+
+        } catch (Exception exception) {
+            return "UNKNOWN";
+        }
     }
 }
