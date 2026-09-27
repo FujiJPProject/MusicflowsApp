@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.json.JsonWriter;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 @Service
 public class TestJobQueueService {
 
+    private static final Logger log = LoggerFactory.getLogger(TestJobQueueService.class);
     private final SqsClient sqsClient;
     private final String queueName;
     private final String resultPrefix;
@@ -70,7 +73,7 @@ public class TestJobQueueService {
         message.put("resultKey", resultKey);
 
         // SQSへメッセージを送信する。
-        sqsClient.sendMessage(
+        var sendMessageResponse = sqsClient.sendMessage(
                 SendMessageRequest.builder()
                         .queueUrl(queueUrl)
                         .messageBody(
@@ -79,6 +82,14 @@ public class TestJobQueueService {
                                 )
                         )
                         .build()
+        );
+
+        log.info(
+                "Test job queued: jobId={}, messageId={}, queueName={}, resultKey={}",
+                jobId,
+                sendMessageResponse.messageId(),
+                queueName,
+                resultKey
         );
 
         return new QueuedTestJob(

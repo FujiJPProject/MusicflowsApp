@@ -13,6 +13,9 @@ export type CompletedTestJobResult = {
   jobId: string;
   status: "COMPLETED";
   requestedBy: string;
+  processorType: "LOCAL_WORKER" | "LAMBDA";
+
+  sqsMessageId: string;
   processedPayload: string;
   processedAt: string;
 };
@@ -23,11 +26,11 @@ export type TestJobResult =
 
 export class JobTestApi {
   private readonly baseUrl: string;
-  private readonly accessToken: string;
+  private readonly accessToken?: string;
 
   constructor(
     baseUrl: string,
-    accessToken: string,
+    accessToken?: string,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.accessToken = accessToken;
@@ -65,10 +68,13 @@ export class JobTestApi {
     init?: RequestInit,
   ): Promise<T> {
     const headers = new Headers(init?.headers);
-    headers.set(
-      "Authorization",
-      `Bearer ${this.accessToken}`,
-    );
+
+    if (this.accessToken) {
+      headers.set(
+        "Authorization",
+        `Bearer ${this.accessToken}`,
+      );
+    }
 
     const response = await fetch(
       `${this.baseUrl}${path}`,

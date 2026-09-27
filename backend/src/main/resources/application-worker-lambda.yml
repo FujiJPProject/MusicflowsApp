@@ -14,6 +14,7 @@ aws:
 app:
   worker:
     bucket-name: ${FILE_BUCKET}
+    processor-type: LAMBDA
 
 logging:
   level:

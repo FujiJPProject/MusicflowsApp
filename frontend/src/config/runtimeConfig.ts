@@ -1,3 +1,5 @@
+export type WorkerExecutionMode = "local" | "lambda";
+
 export type RuntimeConfig = {
   apiBaseUrl: string;
   directApiBaseUrl: string;
@@ -5,6 +7,7 @@ export type RuntimeConfig = {
   cognitoClientId: string;
   awsRegion: string;
   cognitoEndpointUrl: string;
+  workerExecutionMode: WorkerExecutionMode;
 };
 
 let cachedConfig: RuntimeConfig | undefined;
@@ -32,6 +35,14 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     );
   }
 
+  if (config.workerExecutionMode !== "local"
+    && config.workerExecutionMode !== "lambda"
+  ) {
+    throw new Error(
+      "local-config.jsonのworkerExecutionModeが不正です",
+    );
+  }
+
   cachedConfig = {
     apiBaseUrl: config.apiBaseUrl,
     directApiBaseUrl:
@@ -41,6 +52,7 @@ export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
     awsRegion: config.awsRegion ?? "ap-northeast-1",
     cognitoEndpointUrl:
       config.cognitoEndpointUrl ?? "http://localhost:4566",
+    workerExecutionMode: config.workerExecutionMode,
   };
 
   return cachedConfig;

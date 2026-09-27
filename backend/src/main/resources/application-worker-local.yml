@@ -15,7 +15,8 @@ app:
   worker:
     bucket-name: ${FILE_BUCKET:music-app-local-files}
     queue-name: ${SQS_QUEUE_NAME:music-app-local-music-jobs}
-
+    processor-type: LOCAL_WORKER
+    
 logging:
   level:
     root: INFO

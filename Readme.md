@@ -2,11 +2,18 @@
 
 [コンテナ構成に関して](./doc/コンテナ構成/Readme.md)
 
-## 起動確認(コンソール)
+## ビルド(コンソール)
 
+### バックエンド
 ```shell
 docker compose run --rm --no-deps backend \
   ./gradlew clean buildLambdaZips --no-daemon
+```
+
+### フロントエンド
+```shell
+docker compose run --rm --no-deps frontend \
+  npm run build
 ```
 
 ### 1. zipを確認する
@@ -442,4 +449,37 @@ Music job completed:
 jobId=<JOB_ID>
 bucket=music-app-local-files
 key=worker-results/<JOB_ID>.json
+```
+
+## 19. local-workerで動かす場合
+```shell
+docker compose --profile worker-local down
+docker compose pull floci
+WORKER_EXECUTION_MODE=local \
+docker compose --profile worker-local up -d
+```
+
+```shell
+docker compose logs floci \
+  | grep '\[Frontend Config\] Export completed.'
+```
+
+
+```shell
+docker compose exec floci \
+  aws \
+  --endpoint-url http://localhost:4566 \
+  --region ap-northeast-1 \
+  lambda list-event-source-mappings \
+  --function-name music-app-local-music-job-worker \
+  --query 'EventSourceMappings[].{UUID:UUID,State:State}'
+```
+
+```text
+[
+    {
+        "UUID": "XXXX",
+        "State": "Disabled"
+    }
+]
 ```
