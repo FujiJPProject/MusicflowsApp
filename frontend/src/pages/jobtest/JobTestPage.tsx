@@ -124,7 +124,12 @@ export default function JobTestPage() {
         * Spring Bootへ直接接続する。Cognito Access Tokenは使用しない。
         */
        if (config.workerExecutionMode === "local") {
-         return new JobTestApi(
+
+        if (!config.directApiBaseUrl) {
+          return null;
+        }
+
+        return new JobTestApi(
            config.directApiBaseUrl,
          );
        }

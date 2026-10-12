@@ -1,8 +1,8 @@
-import { useMemo,useState,type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from "react-router-dom";
-import { TestsApi,type Tests,} from "./api/test/testsApi";
-import {loadRuntimeConfig,type RuntimeConfig,} from "./config/runtimeConfig";
-import './App.css'
+import { TestsApi, type Tests, } from "./api/test/testsApi";
+import './App.css';
+import { loadRuntimeConfig, type RuntimeConfig, } from "./config/runtimeConfig";
 
 type ApiMode = "direct" | "lambda";
 
@@ -25,11 +25,17 @@ function App() {
 
   // APIクライアントのインスタンスを作成する
   const api = useMemo(() => {
-    if (!config) {
-      return null;
-    }
+     if (!config) {
+    return null;
+  }
 
-    const baseUrl = mode === "direct" ? config.directApiBaseUrl : config.apiBaseUrl;
+  const baseUrl = mode === "direct"
+                      ? config.directApiBaseUrl
+                      : config.apiBaseUrl;
+
+  if (!baseUrl) {
+    return null;
+  }
     return new TestsApi(baseUrl);
   }, [config, mode]);
 
@@ -121,16 +127,18 @@ function App() {
       <section>
         <h2>2. 接続経路</h2>
 
-        <label>
-          <input
-            type="radio"
-            name="api-mode"
-            value="direct"
-            checked={mode === "direct"}
-            onChange={() => setMode("direct")}
-          />
-          Spring Bootへ直接接続
-        </label>
+        {config?.directApiBaseUrl && (
+          <label>
+            <input
+              type="radio"
+              name="api-mode"
+              value="direct"
+              checked={mode === "direct"}
+              onChange={() => setMode("direct")}
+            />
+            Spring Bootへ直接接続
+          </label>
+        )}
 
         <label>
           <input
