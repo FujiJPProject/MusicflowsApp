@@ -47,6 +47,7 @@ function App() {
     try {
       const loadedConfig = await loadRuntimeConfig();
       setConfig(loadedConfig);
+      setMode(loadedConfig.directApiBaseUrl ? "direct" : "lambda");
 
     } catch (cause) {
       setError(toErrorMessage(cause));
