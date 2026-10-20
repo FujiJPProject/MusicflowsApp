@@ -4,16 +4,20 @@ spring:
     web-application-type: none
 
   cloud:
+    # Spring Cloud Functionの設定
     function:
       definition: musicJobWorker
 
 aws:
-  region: ${AWS_REGION:ap-northeast-1}
+  region: ${APP_AWS_REGION:${AWS_REGION:}}
   endpoint-url: ${AWS_ENDPOINT_URL:}
 
 app:
+  runtime:
+    target: ${APP_RUNTIME_TARGET:aws}
+
   worker:
-    bucket-name: ${FILE_BUCKET}
+    bucket-name: ${FILE_BUCKET:}
     processor-type: LAMBDA
 
 logging:

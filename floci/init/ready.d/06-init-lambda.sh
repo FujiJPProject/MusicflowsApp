@@ -71,7 +71,8 @@ import json
 environment = {
     "Variables": {
         "SPRING_PROFILES_ACTIVE": "lambda",
-        "AWS_REGION": "${AWS_REGION}",
+        "APP_RUNTIME_TARGET": "floci",
+        "APP_AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
         "SQS_QUEUE_NAME": "${QUEUE_NAME}",
         "FILE_BUCKET": "${FILE_BUCKET}",
@@ -94,11 +95,11 @@ import json
 
 environment = {
     "Variables": {
-
         "SPRING_PROFILES_ACTIVE": "worker-lambda",
         "MAIN_CLASS": "${WORKER_MAIN_CLASS}",
         "spring_cloud_function_definition": "musicJobWorker",
-        "AWS_REGION": "${AWS_REGION}",
+        "APP_RUNTIME_TARGET": "floci",
+        "APP_AWS_REGION": "${AWS_REGION}",
         "AWS_ENDPOINT_URL": "${AWS_EDGE_INTERNAL_URL}",
         "FILE_BUCKET": "${FILE_BUCKET}"
     }

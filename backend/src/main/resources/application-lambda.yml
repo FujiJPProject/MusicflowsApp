@@ -1,4 +1,33 @@
+aws:
+  # FlociではAPP_AWS_REGIONを使用
+  # 実AWSではLambdaランタイムのAWS_REGIONを使用
+  region: ${APP_AWS_REGION:${AWS_REGION:}}
+
+  # Flociのみ設定する
+  endpoint-url: ${AWS_ENDPOINT_URL:}
+
 app:
+  runtime:
+    # 実AWSではaws、Flociではfloci
+    target: ${APP_RUNTIME_TARGET:aws}
+
+  cors:
+    # フロントエンドのオリジンを指定する。
+    allowed-origin: ${FRONTEND_ORIGIN:}
+
+  security:
+    # CognitoのユーザープールのIDトークンを検証するための設定
+    cognito:
+      issuer-uri: ${COGNITO_ISSUER_URI:}
+      jwk-set-uri: ${COGNITO_JWK_SET_URI:}
+      client-id: ${COGNITO_APP_CLIENT_ID:}
+
+  # Lambdaでのジョブ処理に関する設定
+  music-job:
+    queue-name: ${SQS_QUEUE_NAME:}
+    bucket-name: ${FILE_BUCKET:}
+    result-prefix: worker-results
+  
   database:
     # DB接続情報そのものではなく、
     # Secrets ManagerのSecret名だけをSpring Bootへ渡す。
