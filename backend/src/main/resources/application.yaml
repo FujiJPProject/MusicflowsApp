@@ -6,6 +6,7 @@ mybatis:
   mapper-locations: classpath*:mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true # スネークケースのカラム名をキャメルケースのプロパティ名にマッピングするための設定
+    arg-name-based-constructor-auto-mapping: true # コンストラクタの引数名を使用してマッピングするための設定
 
 aws:
   region: ${AWS_REGION:ap-northeast-1}
