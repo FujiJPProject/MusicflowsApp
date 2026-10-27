@@ -15,11 +15,22 @@ export type AuthSession = {
   expiresIn?: number;
 };
 
+/**
+ * CognitoのUSER_PASSWORD_AUTHを使用して認証する
+ * @param config Config情報
+ * @param username ユーザー名 
+ * @param password パスワード
+ * @returns
+ */
 export async function signIn(
   config: RuntimeConfig,
   username: string,
   password: string,
 ): Promise<AuthSession> {
+
+  if (config.deploymentStage !== "local") {
+    throw new Error("USER_PASSWORD_AUTHはlocal環境専用です");
+  }
 
   const client =
     new CognitoIdentityProviderClient({

@@ -3,13 +3,15 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
-
+import org.springframework.security.authentication.AuthenticationTrustResolver;
+import org.springframework.security.authentication.AuthenticationTrustResolverImpl;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -17,7 +19,6 @@ import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
@@ -30,12 +31,26 @@ public class SecurityConfig {
      * Lambda環境用SecurityFilterChain。
      *
      * SPRING_PROFILES_ACTIVE=lambda の場合だけ有効。
+     * @param http HttpSecurity
+     * @param environment Spring Boot の実行環境情報
      */
     @Bean
     @Profile("lambda")
     SecurityFilterChain lambdaSecurityFilterChain(
-            HttpSecurity http
+            HttpSecurity http,
+            Environment environment
     ) throws Exception {
+
+        // Flociでは疎通確認用APIを有効にするかどうかを環境変数で制御する。
+        boolean testApisEnabled = environment.getProperty(
+                "app.features.test-apis-enabled",
+                Boolean.class,
+                false
+        );
+
+        // 認証済みかどうかを判定するためのヘルパー
+        AuthenticationTrustResolver trustResolver =
+                    new AuthenticationTrustResolverImpl();
 
         http
             /*
@@ -66,38 +81,32 @@ public class SecurityConfig {
                  * API Gateway経由ではFloci Global CORSが
                  * 先に処理する。
                  */
-                .requestMatchers(
-                    HttpMethod.OPTIONS,
-                    "/**"
-                ).permitAll()
+                .requestMatchers(HttpMethod.OPTIONS,"/**").permitAll()
+
+                // ヘルスチェックは公開。
+                .requestMatchers("/api/health").permitAll()
 
                 /*
-                 * ヘルスチェックは公開。
+                 * 疎通確認専用API。
+                 *
+                 * Flociでは許可し、実AWSでは既定で拒否。
+                 * 許可した場合もJWT認証は必須。
                  */
                 .requestMatchers(
-                    "/api/health"
-                ).permitAll()
-
-                /*
-                 * 既存DB APIを保護する。
-                 */
-                .requestMatchers(
-                    "/api/tests/**"
-                ).authenticated()
-
-                /*
-                 * JWT確認API。
-                 */
-                .requestMatchers(
-                    "/api/auth/**"
-                ).authenticated()
-
-                /*
-                 * 新規ジョブAPI。
-                 */
-                .requestMatchers(
-                    "/api/test-jobs/**"
-                ).authenticated()   
+                        "/api/tests",
+                        "/api/tests/**",
+                        "/api/auth/**",
+                        "/api/test-jobs",
+                        "/api/test-jobs/**"
+                )
+                .access((authentication, context) ->
+                        new AuthorizationDecision(
+                            testApisEnabled
+                            && trustResolver.isAuthenticated(
+                                authentication.get()
+                        )
+                )
+        )
 
                 /*
                  * 第2段階では未定義APIも

@@ -17,6 +17,11 @@ import {
   type AuthSession,
 } from "../../auth/cognitoAuth";
 import {
+  beginPkceLogin,
+  clearPkceSession,
+  getPkceSession
+} from "../../auth/cognitoPkce";
+import {
   loadRuntimeConfig,
   type RuntimeConfig,
 } from "../../config/runtimeConfig";
@@ -86,7 +91,9 @@ export default function JobTestPage() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(
+    () => getPkceSession(),
+  );
   const [payload, setPayload] = useState("music flows lambda test");
   const [createdJob, setCreatedJob] =
     useState<CreateTestJobResponse | null>(null);
@@ -113,36 +120,57 @@ export default function JobTestPage() {
     };
   }, []);
 
-    const api = useMemo(() => {
+  // 実行モードに応じてAPIの接続先と認証方式を切り替える。
+  const api = useMemo(() => {
+    if (!config) {
+      return null;
+    }
 
-       if (!config) {
-         return null;
-       }
+    // Local WorkerではSpring Bootに直接接続するため、Cognito認証は不要。
+    if (config.workerExecutionMode === "local") {
+      if (!config.directApiBaseUrl) {
+        return null;
+      }
 
-       /*
-        * Local Workerモードでは、
-        * Spring Bootへ直接接続する。Cognito Access Tokenは使用しない。
-        */
-       if (config.workerExecutionMode === "local") {
-         return new JobTestApi(
-           config.directApiBaseUrl,
-         );
-       }
+      return new JobTestApi(config.directApiBaseUrl);
+    }
 
-       /*
-        * LambdaモードではCognito認証が必要。
-        */
-       if (!session) {
-         return null;
-       }
-   
-       return new JobTestApi(
-         config.apiBaseUrl,
-         session.accessToken,
-       );
-    }, [config, session]);
+    // Lambdaモードではログイン済みセッションのアクセストークンを使用する。
+    if (!session) {
+      return null;
+    }
 
+    return new JobTestApi(
+      config.apiBaseUrl,
+      session.accessToken,
+    );
+  }, [config, session]);
+
+  const loginWithPkce = async () => {
+    if (!config) {
+      return;
+    }
+  
+    setError("");
+  
+    try {
+      await beginPkceLogin(
+        config,
+        "/jobtest",
+      );
+    } catch (cause) {
+      setError(toMessage(cause));
+    }
+  };
   const login = async (event: FormEvent<HTMLFormElement>) => {
+    if (!config) {
+      return;
+    }
+
+    if (config.deploymentStage !== "local") {
+      setError("AWS環境ではCognito OAuthログインを使用してください");
+      return;
+    }
     event.preventDefault();
 
     if (!config) {
@@ -169,6 +197,7 @@ export default function JobTestPage() {
   };
 
   const logout = () => {
+    clearPkceSession();
     pollingController.current?.abort();
     setSession(null);
     setCreatedJob(null);
@@ -180,7 +209,6 @@ export default function JobTestPage() {
     setMessage("ログアウトしました");
   };
 
-  
   const runConnectionTest = async (
     event: FormEvent<HTMLFormElement>,
   ) => {
@@ -191,12 +219,12 @@ export default function JobTestPage() {
         setError("Runtime Configを読み込めていません");
         return;
       }
-    
+
       if (config.workerExecutionMode === "lambda") {
         setError("Lambdaモードでは先にCognitoへログインしてください");
         return;
       }
-    
+
       setError("Spring Boot直接接続用のAPI設定を確認してください");
       return;
     }
@@ -229,6 +257,7 @@ export default function JobTestPage() {
       setFlowState("queued");
       setMessage("SQSへジョブを登録しました。処理結果を確認しています...");
 
+      // ジョブ登録後、上限回数まで一定間隔で処理結果を確認する。
       for (
         let attempt = 1;
         attempt <= MAX_POLLING_ATTEMPTS;
@@ -242,19 +271,18 @@ export default function JobTestPage() {
         );
 
         if (result.status === "COMPLETED") {
-                
           setCompletedResult(result);
-                
-          const expectedProcessorType = config?.workerExecutionMode === "local"
-                                        ? "LOCAL_WORKER"
-                                        : "LAMBDA";
+
+          const expectedProcessorType =
+            config?.workerExecutionMode === "local"
+              ? "LOCAL_WORKER"
+              : "LAMBDA";
 
           /*
            * S3へ保存されたprocessorTypeを正とする。
            * 画面でLocal Workerを選択していても、実際にLambdaが処理していた場合は成功扱いにしない。
            */
           if (result.processorType !== expectedProcessorType) {
-          
             throw new Error(
               [
                 "期待したWorkerと実際に処理したWorkerが一致しません",
@@ -265,9 +293,9 @@ export default function JobTestPage() {
               ].join(", "),
             );
           }
-        
+
           setFlowState("completed");
-        
+
           if (result.processorType === "LOCAL_WORKER") {
             setMessage("疎通確認に成功しました。Local Workerの処理結果をS3から取得できました。");
           } else {
@@ -343,8 +371,16 @@ export default function JobTestPage() {
       <section>
         <h2>2. Cognitoログイン</h2>
         {isLocalWorker ? (
-          <p>Local WorkerモードではSpring Bootへ直接接続するため、Cognitoログインは不要です。</p>
-            ) : !session ? (
+          <p>Local WorkerモードではCognitoログインは不要です。</p>
+        ) : !session && config?.deploymentStage !== "local" ? (
+          <button
+            type="button"
+            disabled={!config}
+            onClick={loginWithPkce}
+          >
+            Cognitoでログイン
+          </button>
+        ) : !session ? (
           <form onSubmit={login}>
             <label>
               ユーザー名
@@ -396,14 +432,12 @@ export default function JobTestPage() {
             <dd>
               {config.workerExecutionMode}
             </dd>
-      
             <dt>現在のAPI接続先</dt>
             <dd>
               {isLocalWorker
                 ? config.directApiBaseUrl
                 : config.apiBaseUrl}
             </dd>
-      
             <dt>期待するProcessor</dt>
             <dd>
               {isLocalWorker ? "LOCAL_WORKER" : "LAMBDA"}
