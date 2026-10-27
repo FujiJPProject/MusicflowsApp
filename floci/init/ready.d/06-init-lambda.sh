@@ -70,6 +70,7 @@ import json
 
 environment = {
     "Variables": {
+        "TEST_APIS_ENABLED": "true",
         "SPRING_PROFILES_ACTIVE": "lambda",
         "APP_RUNTIME_TARGET": "floci",
         "APP_AWS_REGION": "${AWS_REGION}",

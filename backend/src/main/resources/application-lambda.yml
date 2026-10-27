@@ -7,6 +7,10 @@ aws:
   endpoint-url: ${AWS_ENDPOINT_URL:}
 
 app:
+  features:
+    # 実AWSではデフォルトfalse
+    # Flociでは環境変数でtrueにする
+    test-apis-enabled: ${TEST_APIS_ENABLED:false}
   runtime:
     # 実AWSではaws、Flociではfloci
     target: ${APP_RUNTIME_TARGET:aws}
