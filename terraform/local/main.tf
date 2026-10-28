@@ -1,5 +1,5 @@
 module "job_messaging" {
-  source = "../modules/job-messaging"
+  source = "../modules/job-infrastructure"
 
   file_bucket_name = var.file_bucket_name
   job_queue_name   = var.job_queue_name

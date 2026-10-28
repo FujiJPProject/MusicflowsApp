@@ -1,4 +1,4 @@
-# Issue #35 の専用・隔離検証Compose。
+# Terraformの空環境・独立検証用Compose（Shell init未使用）。
 # 既存Flociの名前付きVolume、state、固定コンテナ名を使わない。
 services:
   floci:
@@ -8,12 +8,14 @@ services:
       FLOCI_HOSTNAME: floci
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      AWS_REGION: ap-northeast-1
+      AWS_DEFAULT_REGION: ap-northeast-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     ports:
       - "127.0.0.1:4567:4566"
     volumes:
-      - issue35_floci_data:/app/data
+      - terraform_test_floci_data:/app/data
 
   terraform:
     image: hashicorp/terraform:1.15.8
@@ -25,7 +27,7 @@ services:
       TF_IN_AUTOMATION: "true"
     volumes:
       # 本番用terraform/localのstateと物理的に分離する
-      - ./.docker-cache/issue35-smoke/terraform:/workspace/terraform
+      - ./.docker-cache/terraform-test/terraform:/workspace/terraform
 
 volumes:
-  issue35_floci_data:
+  terraform_test_floci_data:
