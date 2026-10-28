@@ -4,6 +4,13 @@ set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
 
+# Terraform初回適用まではS3/SQSがない。初期化順序を明示する。
+# Shell管理モードの起動順序は従来どおり維持する。
+if [ "${S3_SQS_MANAGER}" = "terraform" ] && [ "${FLOCI_INIT_PHASE}" = "bootstrap" ]; then
+  log "Terraform" "Skip dependent initialization until apply completes."
+  exit 0
+fi
+
 log "API Gateway" "Initialization started."
 
 API_FUNCTION_ARN="arn:aws:lambda:${AWS_REGION}:${AWS_ACCOUNT_ID}:function:${API_FUNCTION_NAME}"
