@@ -1,0 +1,31 @@
+# Issue #35 の専用・隔離検証Compose。
+# 既存Flociの名前付きVolume、state、固定コンテナ名を使わない。
+services:
+  floci:
+    image: floci/floci:latest-compat
+    environment:
+      FLOCI_DEFAULT_REGION: ap-northeast-1
+      FLOCI_HOSTNAME: floci
+      FLOCI_STORAGE_MODE: hybrid
+      FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "127.0.0.1:4567:4566"
+    volumes:
+      - issue35_floci_data:/app/data
+
+  terraform:
+    image: hashicorp/terraform:1.15.8
+    profiles: ["tools"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /workspace
+    environment:
+      HOME: /tmp
+      TF_IN_AUTOMATION: "true"
+    volumes:
+      # 本番用terraform/localのstateと物理的に分離する
+      - ./.docker-cache/issue35-smoke/terraform:/workspace/terraform
+
+volumes:
+  issue35_floci_data:

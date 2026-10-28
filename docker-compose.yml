@@ -67,6 +67,10 @@ services:
       # lambda: Floci Worker LambdaのEvent Source Mappingを有効化する。
       # local:Worker LambdaのEvent Source Mappingを無効化し、worker-localだけがSQSをpollできる状態にする。
       WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE:-lambda}
+      # S3/SQSの管理主体。terraformの場合は01/02のShellをスキップ。
+      S3_SQS_MANAGER: ${S3_SQS_MANAGER:-shell}
+      # Terraform初回適用前は06〜09の依存処理をスキップ。
+      FLOCI_INIT_PHASE: ${FLOCI_INIT_PHASE:-runtime}
 
       # React開発サーバーのCORS許可用
       FRONTEND_ORIGIN: http://localhost:5173
@@ -94,6 +98,21 @@ services:
     networks:
       - music-app-network
 
+  # Terraform CLIをコンテナ内で実行するための任意起動サービス。
+  # 本番のAWS認証情報はマウントしない。tools profile時のみ起動する。
+  terraform:
+    image: hashicorp/terraform:1.15.8
+    profiles:
+      - tools
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /workspace
+    environment:
+      HOME: /tmp
+      TF_IN_AUTOMATION: "true"
+    volumes:
+      - ./terraform:/workspace/terraform
+    networks:
+      - music-app-network
   # React開発サーバーコンテナ
   frontend:
       build:

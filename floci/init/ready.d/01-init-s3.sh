@@ -4,6 +4,12 @@ set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
 
+# Terraform管理下のS3/SQSへShellが書き込みを行わない。
+if [ "${S3_SQS_MANAGER}" = "terraform" ]; then
+  log "Terraform" "Skip resource initialization: ${SCRIPT_DIR##*/}/${0##*/}"
+  exit 0
+fi
+
 log "S3" "Initialization started."
 # S3 作成スクリプト関数
 create_bucket() {
