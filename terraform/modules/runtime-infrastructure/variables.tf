@@ -9,10 +9,14 @@ variable "worker_role_arn" { type = string }
 variable "frontend_origin" { type = string }
 variable "api_zip_hash" { type = string }
 variable "worker_zip_hash" { type = string }
-variable "stage_name" { type = string default = "local" }
-variable "floci_internal_url" { type = string default = "http://floci:4566" }
-variable "floci_host_url" { type = string default = "http://localhost:4566" }
-variable "enable_snapstart" { type = bool default = true }
+variable "stage_name" { type = string
+  default = "local" }
+variable "floci_internal_url" { type = string
+  default = "http://floci:4566" }
+variable "floci_host_url" { type = string
+  default = "http://localhost:4566" }
+variable "enable_snapstart" { type = bool
+  default = true }
 variable "worker_execution_mode" {
   type = string
   default = "lambda"

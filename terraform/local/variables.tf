@@ -27,12 +27,18 @@ variable "dlq_name" {
   default = "music-app-local-music-jobs-dlq"
 }
 
-variable "enable_runtime_infrastructure" { type = bool default = false }
-variable "frontend_origin" { type = string default = "http://localhost:5173" }
-variable "floci_host_url" { type = string default = "http://localhost:4566" }
-variable "enable_snapstart" { type = bool default = true }
-variable "api_zip_hash" { type = string default = "" }
-variable "worker_zip_hash" { type = string default = "" }
+variable "enable_runtime_infrastructure" { type = bool
+  default = false }
+variable "frontend_origin" { type = string
+  default = "http://localhost:5173" }
+variable "floci_host_url" { type = string
+  default = "http://localhost:4566" }
+variable "enable_snapstart" { type = bool
+  default = true }
+variable "api_zip_hash" { type = string
+  default = "" }
+variable "worker_zip_hash" { type = string
+  default = "" }
 variable "worker_execution_mode" {
   type = string
   default = "lambda"
