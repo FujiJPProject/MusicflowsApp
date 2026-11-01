@@ -1,22 +1,57 @@
-# Terraformの空環境・独立検証用Compose（Shell init未使用）。
-# 既存Flociの名前付きVolume、state、固定コンテナ名を使わない。
+# Isolated Terraform/Floci system with no automatic shell-created runtime resources.
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: music_app
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
+    volumes:
+      - terraform_test_postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d music_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [terraform-test-network]
   floci:
     image: floci/floci:latest-compat
+    user: root
     environment:
       FLOCI_DEFAULT_REGION: ap-northeast-1
       FLOCI_HOSTNAME: floci
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
+      FLOCI_DOCKER_RESOURCE_NAMESPACE: music-app-terraform-test
+      FLOCI_SERVICES_DOCKER_NETWORK: music-app-terraform-test-network
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: http://localhost:5174
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_HEADERS: Content-Type,Authorization
       AWS_REGION: ap-northeast-1
       AWS_DEFAULT_REGION: ap-northeast-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-    ports:
-      - "127.0.0.1:4567:4566"
+      PROJECT_NAME: music-app
+      ENVIRONMENT: local
+      S3_SQS_MANAGER: terraform
+      RUNTIME_MANAGER: terraform
+      WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE:-lambda}
+      FRONTEND_ORIGIN: http://localhost:5174
+      FRONTEND_CONFIG_OUTPUT_DIR: /app/export/frontend-config
+      FRONTEND_PUBLIC_COGNITO_ENDPOINT_URL: http://localhost:4567
+      FRONTEND_DIRECT_API_BASE_URL: http://localhost:8081
+    ports: ["127.0.0.1:4567:4566"]
     volumes:
       - terraform_test_floci_data:/app/data
-
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend/build/distributions:/app/lambda/springboot:ro
+      - ./floci/init/ready.d:/app/manual-init:ro
+      - ./.docker-cache/terraform-test/frontend-config:/app/export/frontend-config
+      - ./.docker-cache/terraform-test/secrets:/app/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [terraform-test-network]
   terraform:
     image: hashicorp/terraform:1.15.8
     profiles: ["tools"]
@@ -25,9 +60,79 @@ services:
     environment:
       HOME: /tmp
       TF_IN_AUTOMATION: "true"
+      AWS_REGION: ap-northeast-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     volumes:
-      # 本番用terraform/localのstateと物理的に分離する
       - ./.docker-cache/terraform-test/terraform:/workspace/terraform
-
+    networks: [terraform-test-network]
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile.dev
+    ports: ["127.0.0.1:5174:5173"]
+    volumes:
+      - ./frontend:/app
+      - terraform_test_frontend_node_modules:/app/node_modules
+      - ./.docker-cache/terraform-test/frontend-config:/app/public/config
+    depends_on: [floci]
+    networks: [terraform-test-network]
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.dev
+      args:
+        USER_ID: ${HOST_UID:-1000}
+        GROUP_ID: ${HOST_GID:-1000}
+    ports: ["127.0.0.1:8081:8080"]
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+      - ./.docker-cache/terraform-test/backend-gradle:/app/.gradle
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      FRONTEND_ORIGIN: http://localhost:5174
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: music_app
+      DB_USERNAME: app_user
+      DB_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
+      AWS_REGION: ap-northeast-1
+      AWS_ENDPOINT_URL: http://floci:4566
+    depends_on:
+      postgres:
+        condition: service_healthy
+      floci:
+        condition: service_started
+    networks: [terraform-test-network]
+  worker-local:
+    profiles: ["worker-local"]
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile.dev
+      args:
+        USER_ID: ${HOST_UID:-1000}
+        GROUP_ID: ${HOST_GID:-1000}
+    working_dir: /app
+    command: ["./gradlew", "runWorkerLocal", "--no-daemon"]
+    volumes:
+      - ./backend:/app
+      - ./.docker-cache/terraform-test/worker-gradle:/app/.gradle
+      - ./.docker-cache/terraform-test/worker-build:/app/build
+    environment:
+      SPRING_PROFILES_ACTIVE: worker-local
+      AWS_REGION: ap-northeast-1
+      AWS_ENDPOINT_URL: http://floci:4566
+      FILE_BUCKET: music-app-local-files
+      SQS_QUEUE_NAME: music-app-local-music-jobs
+    depends_on:
+      floci:
+        condition: service_started
+    networks: [terraform-test-network]
 volumes:
   terraform_test_floci_data:
+  terraform_test_postgres_data:
+  terraform_test_frontend_node_modules:
+networks:
+  terraform-test-network:
+    name: music-app-terraform-test-network
