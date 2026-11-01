@@ -4,3 +4,12 @@ floci_endpoint_url = "http://floci:4566"
 file_bucket_name   = "music-app-local-files"
 job_queue_name     = "music-app-local-music-jobs"
 dlq_name           = "music-app-local-music-jobs-dlq"
+
+enable_runtime_infrastructure = false
+frontend_origin = "http://localhost:5173"
+floci_host_url = "http://localhost:4566"
+worker_execution_mode = "lambda"
+enable_snapstart = true
+# Actual Base64 SHA-256 must be set before enabling runtime.
+api_zip_hash = ""
+worker_zip_hash = ""

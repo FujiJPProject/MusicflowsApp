@@ -3,6 +3,12 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
+# Terraform-mode config export occurs explicitly after the apply.
+if [ "${RUNTIME_MANAGER}" = "terraform" ] && [ "${EXPORT_FRONTEND_CONFIG_FORCE:-0}" != "1" ]; then
+  log "Terraform" "Frontend config export deferred."
+  exit 0
+fi
+
 
 # Terraform初回適用まではS3/SQSがない。初期化順序を明示する。
 # Shell管理モードの起動順序は従来どおり維持する。
@@ -75,11 +81,11 @@ for name in required:
 config = {
     "deploymentStage": "local",
     "apiBaseUrl": os.environ["API_BASE_URL"],
-    "directApiBaseUrl": "http://localhost:8080",
+    "directApiBaseUrl": os.environ.get("FRONTEND_DIRECT_API_BASE_URL", "http://localhost:8080"),
     "cognitoUserPoolId": os.environ["USER_POOL_ID"],
     "cognitoClientId": os.environ["APP_CLIENT_ID"],
     "awsRegion": os.environ["AWS_REGION"],
-    "cognitoEndpointUrl": "http://localhost:4566",
+    "cognitoEndpointUrl": os.environ.get("FRONTEND_PUBLIC_COGNITO_ENDPOINT_URL", "http://localhost:4566"),
     "workerExecutionMode": os.environ[
         "WORKER_EXECUTION_MODE"
     ],

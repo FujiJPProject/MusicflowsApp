@@ -3,6 +3,12 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
+# Runtime resources are owned by Terraform in this mode.
+if [ "${RUNTIME_MANAGER}" = "terraform" ]; then
+  log "Terraform" "Runtime initialization skipped."
+  exit 0
+fi
+
 
 # Terraform初回適用まではS3/SQSがない。初期化順序を明示する。
 # Shell管理モードの起動順序は従来どおり維持する。

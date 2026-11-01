@@ -3,6 +3,12 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 . "${SCRIPT_DIR}/00-common.sh"
+# Runtime resources are owned by Terraform in this mode.
+if [ "${RUNTIME_MANAGER}" = "terraform" ]; then
+  log "Terraform" "Runtime initialization skipped."
+  exit 0
+fi
+
 
 TEST_USERNAME="${TEST_USERNAME:-local-user@example.com}"
 TEST_PASSWORD="${TEST_PASSWORD:-LocalPass123!}"
