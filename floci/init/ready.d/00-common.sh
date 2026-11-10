@@ -22,11 +22,16 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-000000000000}"
 WORKER_EXECUTION_MODE="${WORKER_EXECUTION_MODE:-lambda}"
 # Terraform移行中も旧Shell実装を保持する。
 S3_SQS_MANAGER="${S3_SQS_MANAGER:-shell}"
+RUNTIME_MANAGER="${RUNTIME_MANAGER:-shell}"
 FLOCI_INIT_PHASE="${FLOCI_INIT_PHASE:-runtime}"
 
 # 不明な値による予期しない初期化を防ぐ。
 case "${S3_SQS_MANAGER}" in shell|terraform) ;; *)
   printf 'Invalid S3_SQS_MANAGER: %s\n' "${S3_SQS_MANAGER}" >&2
+  exit 1 ;;
+esac
+case "${RUNTIME_MANAGER}" in shell|terraform) ;; *)
+  printf 'Invalid RUNTIME_MANAGER: %s\n' "${RUNTIME_MANAGER}" >&2
   exit 1 ;;
 esac
 case "${FLOCI_INIT_PHASE}" in bootstrap|runtime) ;; *)

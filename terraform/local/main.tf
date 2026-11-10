@@ -32,3 +32,33 @@ output "dlq_url" {
 output "dlq_arn" {
   value = module.job_messaging.dlq_arn
 }
+
+# Opt-in so the Issue #35 S3/SQS-only flow remains available.
+module "runtime" {
+  count = var.enable_runtime_infrastructure ? 1 : 0
+  source = "../modules/runtime-infrastructure"
+  project_name = "music-app"
+  environment = "local"
+  aws_region = var.aws_region
+  file_bucket_name = module.job_messaging.file_bucket_name
+  job_queue_name = module.job_messaging.job_queue_name
+  job_queue_arn = module.job_messaging.job_queue_arn
+  api_role_arn = aws_iam_role.api[0].arn
+  worker_role_arn = aws_iam_role.worker[0].arn
+  frontend_origin = var.frontend_origin
+  worker_execution_mode = var.worker_execution_mode
+  enable_snapstart = var.enable_snapstart
+  api_zip_hash = var.api_zip_hash
+  worker_zip_hash = var.worker_zip_hash
+  floci_internal_url = var.floci_endpoint_url
+  floci_host_url = var.floci_host_url
+  depends_on = [
+    aws_iam_role_policy.api_jobs,
+    aws_iam_role_policy.worker_jobs,
+    aws_iam_role_policy.api_secret,
+  ]
+}
+output "runtime_api_url" { value = try(module.runtime[0].api_url, null) }
+output "runtime_mapping_uuid" { value = try(module.runtime[0].mapping_uuid, null) }
+output "runtime_user_pool_id" { value = try(module.runtime[0].user_pool_id, null) }
+output "runtime_client_id" { value = try(module.runtime[0].client_id, null) }

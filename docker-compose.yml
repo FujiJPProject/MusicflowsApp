@@ -71,6 +71,7 @@ services:
       S3_SQS_MANAGER: ${S3_SQS_MANAGER:-shell}
       # Terraform初回適用前は06〜09の依存処理をスキップ。
       FLOCI_INIT_PHASE: ${FLOCI_INIT_PHASE:-runtime}
+      RUNTIME_MANAGER: ${RUNTIME_MANAGER:-shell}
 
       # React開発サーバーのCORS許可用
       FRONTEND_ORIGIN: http://localhost:5173
@@ -109,6 +110,9 @@ services:
     environment:
       HOME: /tmp
       TF_IN_AUTOMATION: "true"
+      AWS_REGION: ap-northeast-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     volumes:
       - ./terraform:/workspace/terraform
     networks:
