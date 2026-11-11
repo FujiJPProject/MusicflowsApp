@@ -14,7 +14,7 @@ aws:
 
 app:
   cors:
-    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ORIGIN:http://localhost:5173}}
 
   security:
     cognito:

@@ -17,7 +17,7 @@ app:
 
   cors:
     # フロントエンドのオリジンを指定する。
-    allowed-origin: ${FRONTEND_ORIGIN:}
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ORIGIN:}}
 
   security:
     # CognitoのユーザープールのIDトークンを検証するための設定

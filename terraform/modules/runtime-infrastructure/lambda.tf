@@ -31,6 +31,7 @@ resource "aws_lambda_function" "api" {
       SQS_QUEUE_NAME = var.job_queue_name
       FILE_BUCKET = var.file_bucket_name
       FRONTEND_ORIGIN = var.frontend_origin
+      FRONTEND_ALLOWED_ORIGINS = var.frontend_allowed_origins
       COGNITO_ISSUER_URI = local.cognito_issuer_uri
       COGNITO_JWK_SET_URI = local.cognito_jwks_uri
       COGNITO_APP_CLIENT_ID = aws_cognito_user_pool_client.web.id
