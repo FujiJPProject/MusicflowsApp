@@ -7,6 +7,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -23,16 +24,26 @@ public class WebCorsConfig {
      */
     @Bean
     public CorsFilter corsFilter(
-            @Value("${app.cors.allowed-origin}") String allowedOrigin
+            @Value("${app.cors.allowed-origins}") String allowedOrigins
     ) {
 
         CorsConfiguration configuration =
                 new CorsConfiguration();
 
         // 許可するオリジンを設定。
-        configuration.setAllowedOrigins(
-                List.of(allowedOrigin)
-        );
+        // ViteとCloudFrontの両Originを明示的に許可。ワイルドカードは許可しない。
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .distinct()
+                .toList();
+
+        if (origins.isEmpty() || origins.contains("*")
+                || origins.stream().anyMatch(origin ->
+                    !origin.matches("https?://[^/\\s?#]+"))) {
+            throw new IllegalStateException("CORSの許可Originが不正です");
+        }
+        configuration.setAllowedOrigins(origins);
 
         // 許可する HTTP メソッドを設定。
         configuration.setAllowedMethods(
