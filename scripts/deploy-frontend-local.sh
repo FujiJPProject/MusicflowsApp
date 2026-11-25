@@ -1,69 +1,73 @@
-#!/usr/bin/env bash
-# Floci専用。実AWSに対してデプロイしない。
-set -euo pipefail
+#!/bin/sh
+# Flociコンテナ内で実行する。TerraformのOutputは引数で受け取る。
+# /app/frontend-dist は読み取り専用。ホストのPython/AWS CLI/Dockerには依存しない。
+set -eu
 
-cd "$(dirname "$0")/.."
-TEST_PROJECT="${TEST_PROJECT:-music-app-terraform-test}"
-TEST_COMPOSE="docker-compose.terraform-test.yml"
-CONFIG_SOURCE=".docker-cache/terraform-test/frontend-config/local-config.json"
-CONFIG_DEST="frontend/dist/config/local-config.json"
 BUCKET="music-app-local-frontend"
+DIST_DIR="/app/frontend-dist"
+CONFIG_SOURCE="/app/export/frontend-config/local-config.json"
+VALIDATOR="$(dirname "$0")/check-frontend-config.py"
 
-if [[ ! -f "$CONFIG_SOURCE" ]]; then
-  echo "Floci生成済みのRuntime Configがありません: $CONFIG_SOURCE" >&2
+if [ "$#" -ne 2 ]; then
+  echo "Usage: sh deploy-frontend-local.sh <frontend_bucket_name> <distribution_id>" >&2
   exit 1
 fi
-if [[ ! -f frontend/dist/index.html || ! -d frontend/dist/assets ]]; then
-  echo "先にViteの本番ビルドを行ってください: frontend/dist/" >&2
-  exit 1
-fi
 
-# 不完全なConfigやAWS向けConfigをローカルへ誤配信しない。
-python3 scripts/check-frontend-config.py "$CONFIG_SOURCE" --stage local
-mkdir -p frontend/dist/config
-cp "$CONFIG_SOURCE" "$CONFIG_DEST"
-python3 scripts/check-frontend-config.py "$CONFIG_DEST" --stage local
-
-tf() {
-  docker compose -p "$TEST_PROJECT" -f "$TEST_COMPOSE" \
-    --profile tools run --rm --no-deps terraform \
-    -chdir=terraform/local "$@"
-}
-aws_local() {
-  docker compose -p "$TEST_PROJECT" -f "$TEST_COMPOSE" \
-    exec -T floci aws --endpoint-url http://localhost:4566 \
-    --region ap-northeast-1 "$@"
-}
-
-# Stateとアップロード先の一致を検証。既存ジョブ用バケットへの誤配備を防ぐ。
-actual_bucket="$(tf output -raw frontend_bucket_name)"
-dist_id="$(tf output -raw frontend_distribution_id)"
-if [[ "$actual_bucket" != "$BUCKET" || -z "$dist_id" || "$dist_id" == "null" ]]; then
+actual_bucket="$1"
+dist_id="$2"
+case "$dist_id" in
+  ""|null|None|*[!a-zA-Z0-9]*)
+    echo "Terraform OutputのDistribution IDが不正です" >&2
+    exit 1
+    ;;
+esac
+if [ "$actual_bucket" != "$BUCKET" ]; then
   echo "Terraform Outputの配信先が期待値と一致しません" >&2
   exit 1
 fi
+
+if [ ! -f "$CONFIG_SOURCE" ] || [ ! -f "$VALIDATOR" ]; then
+  echo "Runtime Configまたは設定検証スクリプトがありません" >&2
+  exit 1
+fi
+if [ ! -f "$DIST_DIR/index.html" ] || [ ! -d "$DIST_DIR/assets" ]; then
+  echo "先にViteの本番ビルドを行ってください: $DIST_DIR" >&2
+  exit 1
+fi
+
+# 生成済みConfigを一時ファイルへコピーして検証。検証済みの同一内容を配信する。
+# 読み取り専用のdistやRuntime Configの生成元には書き込まない。
+umask 077
+config_snapshot="$(mktemp)"
+trap 'rm -f "$config_snapshot"' EXIT
+cp "$CONFIG_SOURCE" "$config_snapshot"
+python3 "$VALIDATOR" "$config_snapshot" --stage local
+
+aws_local() {
+  aws --endpoint-url http://localhost:4566 --region ap-northeast-1 "$@"
+}
 
 aws_local s3api head-bucket --bucket "$BUCKET" >/dev/null
 aws_local cloudfront get-distribution --id "$dist_id" >/dev/null
 
 # Viteハッシュ付きアセットは不変URLとする。
-aws_local s3 sync /app/frontend-dist/assets/ "s3://${BUCKET}/assets/" \
+aws_local s3 sync "$DIST_DIR/assets/" "s3://${BUCKET}/assets/" \
   --cache-control "public,max-age=31536000,immutable"
 
-# Viteのpublic配下も含めてコピー。HTMLとConfigは独立に更新する。
-aws_local s3 sync /app/frontend-dist/ "s3://${BUCKET}/" \
+# ビルドに含まれ得る旧Configは配信しない。生成済みConfigだけを別途配信する。
+aws_local s3 sync "$DIST_DIR/" "s3://${BUCKET}/" \
   --exclude "index.html" --exclude "assets/*" --exclude "config/*" \
   --cache-control "public,max-age=3600"
 
-aws_local s3 cp "/app/frontend-dist/config/local-config.json" \
+aws_local s3 cp "$config_snapshot" \
   "s3://${BUCKET}/config/local-config.json" \
   --content-type "application/json" --cache-control "no-store,max-age=0"
 
-# HTMLを最後にアップロードすることで存在しないJSを参照させない。
-aws_local s3 cp /app/frontend-dist/index.html "s3://${BUCKET}/index.html" \
+# HTMLは最後に配置する。既存ハッシュ付きアセットは削除しない。
+aws_local s3 cp "$DIST_DIR/index.html" "s3://${BUCKET}/index.html" \
   --content-type "text/html" --cache-control "no-cache,max-age=0,must-revalidate"
 
-# FlociではInvalidation APIの検証のみ。実キャッシュは再現されない。
+# FlociではInvalidation APIの検証のみ。実エッジキャッシュは再現されない。
 aws_local cloudfront create-invalidation --distribution-id "$dist_id" \
   --paths "/" "/index.html" "/config/local-config.json"
 echo "Flociへの配信完了。Distribution ID: $dist_id"
