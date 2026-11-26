@@ -66,9 +66,14 @@ resource "aws_cloudfront_distribution" "frontend" {
     origin_id                = "frontend-s3"
     origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
 
-    s3_origin_config {
-      origin_access_identity = ""
-    }
+    # ProviderとFloci間の値の差分を抑制する。
+    response_completion_timeout = 0
+
+    # OAC利用時の空のS3OriginConfigはAWS Providerが自動補完する。
+    # 空のOAI設定を明示せず、Stateとの繰り返し差分を防止する。
+    # s3_origin_config {
+    #   origin_access_identity = ""
+    # }
   }
 
   default_cache_behavior {

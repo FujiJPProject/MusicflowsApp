@@ -31,7 +31,7 @@ public class AwsRequiredSettingsValidator implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         require("aws.region");
-        require("app.cors.allowed-origin");
+        require("app.cors.allowed-origins");
 
         require("app.security.cognito.issuer-uri");
         require("app.security.cognito.jwk-set-uri");
