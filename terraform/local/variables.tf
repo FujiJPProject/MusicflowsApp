@@ -67,3 +67,25 @@ variable "worker_execution_mode" {
     error_message = "Choose lambda or local."
   }
 }
+
+# Issue #37: 既存Floci環境の意図しない変更を避けるためオプトイン。
+variable "enable_frontend_delivery" {
+  type    = bool
+  default = false
+}
+
+variable "frontend_bucket_name" {
+  type    = string
+  default = "music-app-local-frontend"
+}
+
+# 独立テスト用Compose: 127.0.0.1:4567 -> Floci:4566
+variable "floci_viewer_port" {
+  type    = number
+  default = 4567
+
+  validation {
+    condition     = var.floci_viewer_port >= 1 && var.floci_viewer_port <= 65535
+    error_message = "floci_viewer_portは1〜65535を指定してください。"
+  }
+}

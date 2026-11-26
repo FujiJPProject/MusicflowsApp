@@ -20,12 +20,15 @@ services:
     user: root
     environment:
       FLOCI_DEFAULT_REGION: ap-northeast-1
+      # 厳格なS3認可はIssue #36への影響を確認したうえで明示的にtrueへ
+      FLOCI_SERVICES_S3_ENFORCE_AUTH: ${FLOCI_SERVICES_S3_ENFORCE_AUTH:-false}
       FLOCI_HOSTNAME: floci
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
       FLOCI_DOCKER_RESOURCE_NAMESPACE: music-app-terraform-test
       FLOCI_SERVICES_DOCKER_NETWORK: music-app-terraform-test-network
-      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: http://localhost:5174
+      # CloudFrontのDistribution ID確定後、Vite/CloudFront両Originを指定
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: ${FLOCI_CORS_ALLOWED_ORIGINS:-http://localhost:5174}
       FLOCI_SECURITY_EXTRA_CORS_ALLOWED_HEADERS: Content-Type,Authorization
       AWS_REGION: ap-northeast-1
       AWS_DEFAULT_REGION: ap-northeast-1
@@ -45,6 +48,7 @@ services:
       - terraform_test_floci_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
       - ./backend/build/distributions:/app/lambda/springboot:ro
+      - ./frontend/dist:/app/frontend-dist:ro
       - ./floci/init/ready.d:/app/manual-init:ro
       - ./.docker-cache/terraform-test/frontend-config:/app/export/frontend-config
       - ./.docker-cache/terraform-test/secrets:/app/secrets:ro
@@ -92,6 +96,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: local
       FRONTEND_ORIGIN: http://localhost:5174
+      FRONTEND_ALLOWED_ORIGINS: ${FRONTEND_ALLOWED_ORIGINS:-http://localhost:5174}
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: music_app

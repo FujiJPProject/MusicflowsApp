@@ -71,3 +71,9 @@ variable "worker_execution_mode" {
     error_message = "Choose lambda or local."
   }
 }
+
+# ViteとCloudFrontを同じAPIへ接続するためのCORS設定
+variable "frontend_allowed_origins" {
+  type        = string
+  description = "APIにアクセス可能なブラウザOriginのカンマ区切りリスト"
+}

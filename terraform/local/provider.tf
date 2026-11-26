@@ -6,6 +6,7 @@ provider "aws" {
   skip_region_validation = true
   s3_use_path_style = true
   endpoints {
+    cloudfront = var.floci_endpoint_url
     s3 = var.floci_endpoint_url
     sqs = var.floci_endpoint_url
     iam = var.floci_endpoint_url

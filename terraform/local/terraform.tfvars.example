@@ -13,3 +13,8 @@ enable_snapstart = true
 # Actual Base64 SHA-256 must be set before enabling runtime.
 api_zip_hash = ""
 worker_zip_hash = ""
+
+# Issue #37: frontend配信の検証時のみtrueにする
+enable_frontend_delivery = false
+frontend_bucket_name     = "music-app-local-frontend"
+floci_viewer_port        = 4567

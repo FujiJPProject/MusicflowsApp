@@ -46,6 +46,10 @@ module "runtime" {
   api_role_arn = aws_iam_role.api[0].arn
   worker_role_arn = aws_iam_role.worker[0].arn
   frontend_origin = var.frontend_origin
+  frontend_allowed_origins = var.enable_frontend_delivery ? join(",", [
+    var.frontend_origin,
+    "http://${lower(module.frontend_delivery[0].distribution_id)}.cloudfront.localhost.floci.io:${var.floci_viewer_port}"
+  ]) : var.frontend_origin
   worker_execution_mode = var.worker_execution_mode
   enable_snapstart = var.enable_snapstart
   api_zip_hash = var.api_zip_hash
@@ -62,3 +66,25 @@ output "runtime_api_url" { value = try(module.runtime[0].api_url, null) }
 output "runtime_mapping_uuid" { value = try(module.runtime[0].mapping_uuid, null) }
 output "runtime_user_pool_id" { value = try(module.runtime[0].user_pool_id, null) }
 output "runtime_client_id" { value = try(module.runtime[0].client_id, null) }
+
+# Frontendはジョブ結果・Lambda ZIP用S3とは別のバケットに配置。
+# 既存Issue #35/#36では初期値falseのため一切変更されない。
+module "frontend_delivery" {
+  count = var.enable_frontend_delivery ? 1 : 0
+
+  source               = "../modules/frontend-delivery"
+  name_prefix          = "music-app-local"
+  frontend_bucket_name = var.frontend_bucket_name
+}
+
+output "frontend_bucket_name" {
+  value = try(module.frontend_delivery[0].bucket_name, null)
+}
+
+output "frontend_distribution_id" {
+  value = try(module.frontend_delivery[0].distribution_id, null)
+}
+
+output "frontend_distribution_domain_name" {
+  value = try(module.frontend_delivery[0].distribution_domain_name, null)
+}
