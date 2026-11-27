@@ -17,3 +17,7 @@ logging:
   level:
     com.jws.musicflows: DEBUG
     org.mybatis: INFO
+
+app:
+  features:
+    test-apis-enabled: ${TEST_APIS_ENABLED:true}

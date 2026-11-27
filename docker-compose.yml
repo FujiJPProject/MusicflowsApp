@@ -155,6 +155,7 @@ services:
     environment:
       # Spring Bootのプロファイルをlocalに設定することで、LocalSqsWorkerPollerが無効化され、SQSをpollしないようになる。
       SPRING_PROFILES_ACTIVE: local
+      TEST_APIS_ENABLED: ${TEST_APIS_ENABLED:-true}
       SECURITY_ENABLED: "false"
       FRONTEND_ORIGIN: http://localhost:5173
       # Spring Boot LambdaからDBへ接続するための設定

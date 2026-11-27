@@ -95,6 +95,7 @@ services:
       - ./.docker-cache/terraform-test/backend-gradle:/app/.gradle
     environment:
       SPRING_PROFILES_ACTIVE: local
+      TEST_APIS_ENABLED: ${TEST_APIS_ENABLED:-true}
       FRONTEND_ORIGIN: http://localhost:5174
       FRONTEND_ALLOWED_ORIGINS: ${FRONTEND_ALLOWED_ORIGINS:-http://localhost:5174}
       DB_HOST: postgres
@@ -141,3 +142,4 @@ volumes:
 networks:
   terraform-test-network:
     name: music-app-terraform-test-network
+
