@@ -95,7 +95,7 @@ public class SecurityConfig {
                 .requestMatchers(
                         "/api/tests",
                         "/api/tests/**",
-                        "/api/auth/**",
+                        "/api/auth/me",
                         "/api/test-jobs",
                         "/api/test-jobs/**"
                 )
@@ -132,20 +132,28 @@ public class SecurityConfig {
      *
      * SPRING_PROFILES_ACTIVE=local の場合だけ有効。
      *
-     * 第1段階のApp.tsxによる疎通確認を維持するため、
+     * 開発用DB・ジョブ疎通確認を維持するため、
      * localでは認証なしで利用できる。
      */
     @Bean
     @Profile("local")
     SecurityFilterChain localSecurityFilterChain(
-            HttpSecurity http
+            HttpSecurity http,
+            Environment environment
     ) throws Exception {
+        boolean testApisEnabled = environment.getProperty(
+                "app.features.test-apis-enabled", Boolean.class, true);
 
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
             .authorizeHttpRequests(auth ->
-                auth.anyRequest().permitAll()
+                auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    .requestMatchers("/api/health").permitAll()
+                    .requestMatchers("/api/tests", "/api/tests/**", "/api/auth/me",
+                            "/api/test-jobs", "/api/test-jobs/**")
+                    .access((authentication, context) -> new AuthorizationDecision(testApisEnabled))
+                    .anyRequest().permitAll()
             );
 
         return http.build();
