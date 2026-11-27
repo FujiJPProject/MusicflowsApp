@@ -12,20 +12,21 @@ runtime_env
 current="$(dc exec -T floci printenv FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS)"
 if [[ "$current" != "$FLOCI_CORS_ALLOWED_ORIGINS" ]] || ! dc exec -T floci test -f /app/scripts/check-frontend-config.py || ! dc exec -T floci test -d /app/backend-source; then
   confirm 'FlociのCORS・マウント設定反映のため再作成しますか？' || exit 1
-  if running worker-local; then die 'Stop worker-local before recreating Floci'; exit 1; fi
+  require_stopped worker-local
+  assert_drained
   dc up -d --no-deps --force-recreate floci
   wait_floci
 fi
 case "$mode" in
   worker-local)
     [[ "$WORKER_EXECUTION_MODE" == local && "$(mapping_state)" == Disabled ]] || { die 'Run worker-mode.sh local first.'; exit 1; }
-    if ! running worker-local; then assert_drained; fi
+    if running worker-local; then :; else rc=$?; [[ "$rc" == 1 ]] || exit "$rc"; assert_drained; fi
     dc --profile worker-local up -d --no-deps worker-local
     dc up -d --no-deps backend
     ;;
   lambda|all)
     [[ "$WORKER_EXECUTION_MODE" == lambda && "$(mapping_state)" == Enabled ]] || { die 'Run worker-mode.sh lambda first.'; exit 1; }
-    if running worker-local; then die 'Local worker unexpectedly running'; exit 1; fi
+    require_stopped worker-local
     run_local export-frontend-config
     dc up -d --no-deps frontend
     if [[ "$mode" == all ]]; then dc up -d --no-deps backend; fi

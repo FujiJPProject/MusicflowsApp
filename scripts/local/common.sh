@@ -41,7 +41,26 @@ prepare() {
   require_password
   lock_local
 }
-running() { [[ -n "$(dc --profile worker-local ps --status running -q "$1")" ]]; }
+# Return failure for a Docker error, not an empty container list.
+running() {
+  local ids
+  ids="$(dc --profile worker-local ps --status running -q "$1")" || return 2
+  [[ -n "$ids" ]]
+}
+require_stopped() {
+  local ids
+  ids="$(dc --profile worker-local ps --status running -q "$1")" || return 1
+  [[ -z "$ids" ]] || die "$1 is still running."
+}
+prepare_dirs() {
+  mkdir -p "$TFDIR" "$CACHE/frontend-config" "$CACHE/secrets" "$CACHE/backend-gradle" "$CACHE/worker-gradle" "$CACHE/worker-build" "$ROOT/backend/build/distributions" "$ROOT/frontend/dist"
+}
+ensure_floci_mounts() {
+  if ! dc exec -T floci test -f /app/scripts/check-frontend-config.py || ! dc exec -T floci test -d /app/backend-source || ! dc exec -T floci test -d /app/frontend-source; then
+    die 'Floci has legacy mounts. Stop new jobs and follow the existing-environment migration procedure.'
+    return 1
+  fi
+}
 state_kind() {
   local pg=0 fl=0 st=0
   if docker volume inspect "${PROJECT}_terraform_test_postgres_data" >/dev/null 2>&1; then pg=1; fi
@@ -61,6 +80,7 @@ wait_floci() {
   die 'Floci not ready; inspect dc logs floci.'
 }
 start_infra() {
+  prepare_dirs
   dc up -d --no-deps --no-recreate --wait postgres
   dc up -d --no-deps --no-recreate floci
   wait_floci

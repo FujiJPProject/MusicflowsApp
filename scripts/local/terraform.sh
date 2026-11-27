@@ -33,7 +33,7 @@ case "$cmd" in
   apply)
     require_existing
     [[ -f "$TFDIR/runtime.tfplan" ]] || { die 'Run plan first.'; exit 1; }
-    if running worker-local; then die 'Stop worker-local before applying a plan.'; exit 1; fi
+    require_stopped worker-local
     tf_test show runtime.tfplan
     tf_test show -json runtime.tfplan | dc exec -T floci python3 -c 'import json,sys; p=json.load(sys.stdin); sys.exit(any("delete" in r["change"]["actions"] for r in p.get("resource_changes",[])))' || { die 'Plan contains deletion/replacement or inspection failed.'; exit 1; }
     confirm '表示されたPlanを適用しますか？' || exit 1
@@ -51,6 +51,7 @@ case "$cmd" in
     [[ "${MUSICFLOWS_NEW_SETUP:-}" == yes && ! -e "$TFDIR/terraform.tfstate" ]] || { die 'Bootstrap is restricted to a fresh setup.'; exit 1; }
     tf_test plan -input=false -target=module.job_messaging -target='module.runtime[0].aws_secretsmanager_secret.db' -out=bootstrap.tfplan
     tf_test show bootstrap.tfplan
+    tf_test show -json bootstrap.tfplan | dc exec -T floci python3 -c 'import json,sys; p=json.load(sys.stdin); sys.exit(any("delete" in r["change"]["actions"] for r in p.get("resource_changes",[])))'
     confirm '初回Bootstrap Planを適用しますか？' || exit 1
     tf_test apply -input=false bootstrap.tfplan
     rm -f "$TFDIR/bootstrap.tfplan"

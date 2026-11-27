@@ -3,6 +3,9 @@ set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 prepare
 require_existing
+ensure_floci_mounts
+[[ -s "$CACHE/lambda-build.ok" ]] || { die 'Build Lambda ZIPs successfully first.'; exit 1; }
+(cd "$ROOT/backend/build/distributions" && sha256sum -c "$CACHE/lambda-build.ok")
 case "${1:-all}" in api|worker) targets=("$1");; all) targets=(api worker);; *) exit 2;; esac
 bucket="$(output file_bucket_name)"
 [[ "$bucket" == music-app-local-files ]] || { die 'Unexpected artifact bucket'; exit 1; }

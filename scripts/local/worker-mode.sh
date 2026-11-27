@@ -13,8 +13,9 @@ fi
 confirm '切替中は新規ジョブを登録しないでください。続行しますか？' || exit 1
 # Stop local worker before any mapping change; never run both consumers.
 dc --profile worker-local stop worker-local
-if running worker-local; then die 'Local worker still running'; exit 1; fi
-if [[ "$(output worker_execution_mode)" != "$mode" ]]; then
+require_stopped worker-local
+current_mode="$(output worker_execution_mode)"
+if [[ "$current_mode" != "$mode" ]]; then
   set_var worker_execution_mode "\"$mode\""
   run_local terraform plan
   run_local terraform apply
@@ -26,5 +27,7 @@ if [[ "$mode" == local ]]; then
 else
   wait_mapping Enabled
 fi
-run_local export-frontend-config
+runtime_env
+# Recreate a running direct Backend only when its environment changed.
+if running backend; then dc up -d --no-deps backend; else rc=$?; [[ "$rc" == 1 ]] || exit "$rc"; fi
 run_local deploy-frontend
