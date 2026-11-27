@@ -35,12 +35,12 @@ variable "enable_runtime_infrastructure" {
 
 variable "frontend_origin" {
   type    = string
-  default = "http://localhost:5173"
+  default = "http://localhost:5174"
 }
 
 variable "floci_host_url" {
   type    = string
-  default = "http://localhost:4566"
+  default = "http://localhost:4567"
 }
 
 variable "enable_snapstart" {
@@ -88,4 +88,11 @@ variable "floci_viewer_port" {
     condition     = var.floci_viewer_port >= 1 && var.floci_viewer_port <= 65535
     error_message = "floci_viewer_portは1〜65535を指定してください。"
   }
+}
+
+
+variable "test_apis_enabled" {
+  description = "Enable diagnostic APIs in local development."
+  type        = bool
+  default     = true
 }

@@ -1,4 +1,4 @@
-package com.jws.musicflows.api.test;
+package com.jws.musicflows.api.health;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;

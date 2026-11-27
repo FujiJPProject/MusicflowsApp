@@ -1,15 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import App from "./App";
+import DatabaseTestPage from "./pages/dev/DatabaseTestPage";
 import {
   loadRuntimeConfig,
   type RuntimeConfig,
 } from "./config/runtimeConfig";
 import "./index.css";
 import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
-import AuthTestPage from "./pages/auth/AuthTestPage";
-import JobTestPage from "./pages/jobtest/JobTestPage";
+import AuthTestPage from "./pages/dev/AuthTestPage";
+import JobTestPage from "./pages/dev/JobTestPage";
 
 const rootElement = document.getElementById("root");
 
@@ -30,27 +31,8 @@ function Application({ config }: {
     <StrictMode>
       <BrowserRouter>
         <Routes>
-          {/* 環境に応じてホーム画面を切り替えます。 */}
-          <Route
-            path="/"
-            element={
-              isLocal ? (
-                <App />
-              ) : testsEnabled ? (
-                <main>
-                  <h1>Musicflows 開発用画面</h1>
-                  <Link to="/jobtest">
-                    ジョブ疎通確認へ
-                  </Link>
-                </main>
-              ) : (
-                <main>
-                  <h1>Musicflows</h1>
-                  <p>アプリケーション準備中</p>
-                </main>
-              )
-            }
-          />
+          <Route path="/" element={<App testsEnabled={testsEnabled} />} />
+          {testsEnabled && <Route path="/dev/db-test" element={<DatabaseTestPage config={config} />} />}
 
           {/* テスト用ルートは設定で有効な場合のみ登録します。 */}
           {testsEnabled && (

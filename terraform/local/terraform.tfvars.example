@@ -6,8 +6,8 @@ job_queue_name     = "music-app-local-music-jobs"
 dlq_name           = "music-app-local-music-jobs-dlq"
 
 enable_runtime_infrastructure = false
-frontend_origin = "http://localhost:5173"
-floci_host_url = "http://localhost:4566"
+frontend_origin = "http://localhost:5174"
+floci_host_url = "http://localhost:4567"
 worker_execution_mode = "lambda"
 enable_snapstart = true
 # Actual Base64 SHA-256 must be set before enabling runtime.
@@ -18,3 +18,6 @@ worker_zip_hash = ""
 enable_frontend_delivery = false
 frontend_bucket_name     = "music-app-local-frontend"
 floci_viewer_port        = 4567
+
+
+test_apis_enabled = true

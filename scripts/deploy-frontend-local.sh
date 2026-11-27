@@ -1,10 +1,10 @@
 #!/bin/sh
 # Flociコンテナ内で実行する。TerraformのOutputは引数で受け取る。
-# /app/frontend-dist は読み取り専用。ホストのPython/AWS CLI/Dockerには依存しない。
+# /app/frontend-source/dist は読み取り専用。ホストのPython/AWS CLI/Dockerには依存しない。
 set -eu
 
 BUCKET="music-app-local-frontend"
-DIST_DIR="/app/frontend-dist"
+DIST_DIR="/app/frontend-source/dist"
 CONFIG_SOURCE="/app/export/frontend-config/local-config.json"
 VALIDATOR="$(dirname "$0")/check-frontend-config.py"
 
