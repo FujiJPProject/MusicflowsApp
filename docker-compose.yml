@@ -1,110 +1,67 @@
-# 起動するコンテナの定義
+# Standard Terraform-managed local environment (preserves Issue #35–37 resources).
+name: music-app-terraform-test
 services:
- # Postgresコンテナ (PostgreSQL 16)
   postgres:
     image: postgres:16
-    container_name: music-app-postgres
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_DB: music_app
       POSTGRES_USER: app_user
-      POSTGRES_PASSWORD: app_password
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
+      - terraform_test_postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app_user -d music_app"]
       interval: 10s
       timeout: 5s
       retries: 10
-    networks:
-      - music-app-network
-
-  # Flociコンテナ(AWSローカルエミュレーター)
+    networks: [terraform-test-network]
   floci:
-    # ready.d 内で AWS CLI を利用するため compat イメージを使用
     image: floci/floci:latest-compat
-    container_name: music-app-floci
     user: root
-    privileged: true # Docker-in-Docker を利用するために必要
-    ports:
-      - "4566:4566"
     environment:
       FLOCI_DEFAULT_REGION: ap-northeast-1
+      # 厳格なS3認可はIssue #36への影響を確認したうえで明示的にtrueへ
+      FLOCI_SERVICES_S3_ENFORCE_AUTH: ${FLOCI_SERVICES_S3_ENFORCE_AUTH:-false}
       FLOCI_HOSTNAME: floci
       FLOCI_STORAGE_MODE: hybrid
       FLOCI_STORAGE_PERSISTENT_PATH: /app/data
-      FLOCI_INIT_HOOKS_TIMEOUT_SECONDS: "120"
-
-       # --------------------------------------------------------
-       # ブラウザからFlociへアクセスするためのCORS設定
-       # React開発サーバー http://localhost:5173 を許可する
-       # --------------------------------------------------------
-      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: http://localhost:5173
-
-       # Authorizationは今後Cognito/JWTを利用するため含めておく
+      FLOCI_DOCKER_RESOURCE_NAMESPACE: music-app-terraform-test
+      FLOCI_SERVICES_DOCKER_NETWORK: music-app-terraform-test-network
+      # CloudFrontのDistribution ID確定後、Vite/CloudFront両Originを指定
+      FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS: ${FLOCI_CORS_ALLOWED_ORIGINS:-http://localhost:5174}
       FLOCI_SECURITY_EXTRA_CORS_ALLOWED_HEADERS: Content-Type,Authorization
-
-      # AWS CLI / Lambda 実行コンテナが利用するローカル設定
       AWS_REGION: ap-northeast-1
       AWS_DEFAULT_REGION: ap-northeast-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-
-      # Spring Boot LambdaからDBへ接続するために合わせる
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: music_app
-      DB_USERNAME: app_user
-      DB_PASSWORD: app_password
-
-      # 初期化スクリプトで利用する共通値
       PROJECT_NAME: music-app
       ENVIRONMENT: local
-
-      # SQSを処理するWorkerの実行モード。
-      # lambda: Floci Worker LambdaのEvent Source Mappingを有効化する。
-      # local:Worker LambdaのEvent Source Mappingを無効化し、worker-localだけがSQSをpollできる状態にする。
+      S3_SQS_MANAGER: terraform
+      RUNTIME_MANAGER: terraform
       WORKER_EXECUTION_MODE: ${WORKER_EXECUTION_MODE:-lambda}
-      # S3/SQSの管理主体。terraformの場合は01/02のShellをスキップ。
-      S3_SQS_MANAGER: ${S3_SQS_MANAGER:-shell}
-      # Terraform初回適用前は06〜09の依存処理をスキップ。
-      FLOCI_INIT_PHASE: ${FLOCI_INIT_PHASE:-runtime}
-      RUNTIME_MANAGER: ${RUNTIME_MANAGER:-shell}
-
-      # React開発サーバーのCORS許可用
-      FRONTEND_ORIGIN: http://localhost:5173
-
+      TEST_APIS_ENABLED: ${TEST_APIS_ENABLED:-true}
+      FRONTEND_ORIGIN: http://localhost:5174
+      FRONTEND_CONFIG_OUTPUT_DIR: /app/export/frontend-config
+      FRONTEND_PUBLIC_COGNITO_ENDPOINT_URL: http://localhost:4567
+      FRONTEND_DIRECT_API_BASE_URL: http://localhost:8081
+    ports: ["127.0.0.1:4567:4566"]
     volumes:
-      # Floci の状態保存用ボリューム
-      - floci_data:/app/data
-
-      # 起動後に自動実行するスクリプトをマウント
-      - ./floci/init/ready.d:/etc/floci/init/ready.d:ro
-
-      # React が読み込むランタイム設定の出力先
-      - ./frontend/public/config:/app/export/frontend-config
-
-      # Lambda 実行用コンテナを Floci から起動するために必要
+      - terraform_test_floci_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
-
-      # Spring Boot Lambdaの成果物をFloci初期化スクリプトから参照する
       - ./backend/build/distributions:/app/lambda/springboot:ro
-
-    # Flociが完全に起動してからFlociコンテナを起動するための依存関係
+      - ./frontend/dist:/app/frontend-dist:ro
+      - ./floci/init/ready.d:/app/manual-init:ro
+      - ./scripts:/app/scripts:ro
+      - ./.docker-cache/terraform-test/frontend-config:/app/export/frontend-config
+      - ./.docker-cache/terraform-test/secrets:/app/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - music-app-network
-
-  # Terraform CLIをコンテナ内で実行するための任意起動サービス。
-  # 本番のAWS認証情報はマウントしない。tools profile時のみ起動する。
+    networks: [terraform-test-network]
   terraform:
     image: hashicorp/terraform:1.15.8
-    profiles:
-      - tools
+    profiles: ["tools"]
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     working_dir: /workspace
     environment:
@@ -114,57 +71,41 @@ services:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     volumes:
-      - ./terraform:/workspace/terraform
-    networks:
-      - music-app-network
-  # React開発サーバーコンテナ
+      - ./.docker-cache/terraform-test/terraform:/workspace/terraform
+    networks: [terraform-test-network]
   frontend:
-      build:
-        context: .
-        dockerfile: docker/frontend/Dockerfile.dev
-      container_name: music-app-frontend
-      ports:
-        - "5173:5173"
-      volumes:
-        - ./frontend:/app
-        - frontend_node_modules:/app/node_modules
-      depends_on:
-      - floci
-      networks:
-        - music-app-network
-    
-  # Spring Boot開発サーバーコンテナ
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile.dev
+    ports: ["127.0.0.1:5174:5173"]
+    volumes:
+      - ./frontend:/app
+      - terraform_test_frontend_node_modules:/app/node_modules
+      - ./.docker-cache/terraform-test/frontend-config:/app/public/config
+    depends_on: [floci]
+    networks: [terraform-test-network]
   backend:
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev
-      # ホストのUID/GIDをコンテナに渡すことで、ホストとコンテナ間でファイルの所有権を一致させる
       args:
         USER_ID: ${HOST_UID:-1000}
         GROUP_ID: ${HOST_GID:-1000}
-    container_name: music-app-backend
-    ports:
-      - "8080:8080"
-    volumes:
-      # ソースコードはホストと共有
-      # backend/build はFlociからLambda ZIPを参照するためホストとの共有を維持する。
-      - ./backend:/app
-      # Gradle Project CacheだけDocker専用に分離とすることでGradleのlock競合を防止する。
-      - ./.docker-cache/backend-gradle-project:/app/.gradle
+    ports: ["127.0.0.1:8081:8080"]
     working_dir: /app
+    volumes:
+      - ./backend:/app
+      - ./.docker-cache/terraform-test/backend-gradle:/app/.gradle
     environment:
-      # Spring Bootのプロファイルをlocalに設定することで、LocalSqsWorkerPollerが無効化され、SQSをpollしないようになる。
       SPRING_PROFILES_ACTIVE: local
       TEST_APIS_ENABLED: ${TEST_APIS_ENABLED:-true}
-      SECURITY_ENABLED: "false"
-      FRONTEND_ORIGIN: http://localhost:5173
-      # Spring Boot LambdaからDBへ接続するための設定
+      FRONTEND_ORIGIN: http://localhost:5174
+      FRONTEND_ALLOWED_ORIGINS: ${FRONTEND_ALLOWED_ORIGINS:-http://localhost:5174}
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: music_app
       DB_USERNAME: app_user
-      DB_PASSWORD: app_password
-      # AWS CLI / Lambda 実行コンテナが利用するローカル設定
+      DB_PASSWORD: ${TEST_DB_PASSWORD:?Set TEST_DB_PASSWORD}
       AWS_REGION: ap-northeast-1
       AWS_ENDPOINT_URL: http://floci:4566
     depends_on:
@@ -172,62 +113,35 @@ services:
         condition: service_healthy
       floci:
         condition: service_started
-    networks:
-      - music-app-network
-
+    networks: [terraform-test-network]
   worker-local:
-    profiles:
-    - worker-local
-
+    profiles: ["worker-local"]
     build:
       context: .
       dockerfile: docker/backend/Dockerfile.dev
-      # ホストのUID/GIDをコンテナに渡すことで、ホストとコンテナ間でファイルの所有権を一致させる
       args:
         USER_ID: ${HOST_UID:-1000}
         GROUP_ID: ${HOST_GID:-1000}
-
-    container_name: music-app-worker-local
-
+    working_dir: /app
+    command: ["./gradlew", "runWorkerLocal", "--no-daemon"]
     volumes:
       - ./backend:/app
-      # Worker専用Gradle Project Cache
-      - ./.docker-cache/worker-gradle-project:/app/.gradle
-      # Worker専用buildディレクトリ
-      - ./.docker-cache/worker-build:/app/build
-
-    working_dir: /app
-
-    # Spring Boot Workerを起動するためのコマンド
-    command:
-      - ./gradlew
-      - runWorkerLocal
-      - --no-daemon
-
+      - ./.docker-cache/terraform-test/worker-gradle:/app/.gradle
+      - ./.docker-cache/terraform-test/worker-build:/app/build
     environment:
-      #   Spring Bootのプロファイルをworker-localに設定することで、
-      #   LocalSqsWorkerPollerが有効化され、SQSをpollするようになる。
       SPRING_PROFILES_ACTIVE: worker-local
-      #  Spring Boot LambdaからDBへ接続するための設定
       AWS_REGION: ap-northeast-1
       AWS_ENDPOINT_URL: http://floci:4566
-      # Spring Boot LambdaからS3へ接続するための設定
       FILE_BUCKET: music-app-local-files
       SQS_QUEUE_NAME: music-app-local-music-jobs
-
     depends_on:
       floci:
         condition: service_started
-
-    networks:
-      - music-app-network
-
+    networks: [terraform-test-network]
 volumes:
-  postgres_data:
-  floci_data:
-  frontend_node_modules:
-
-
+  terraform_test_floci_data:
+  terraform_test_postgres_data:
+  terraform_test_frontend_node_modules:
 networks:
-  music-app-network:
-    name: music-app-network
+  terraform-test-network:
+    name: music-app-terraform-test-network
