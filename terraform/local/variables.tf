@@ -89,3 +89,10 @@ variable "floci_viewer_port" {
     error_message = "floci_viewer_portは1〜65535を指定してください。"
   }
 }
+
+
+variable "test_apis_enabled" {
+  description = "Enable diagnostic APIs in local development."
+  type        = bool
+  default     = true
+}

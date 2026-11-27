@@ -77,3 +77,10 @@ variable "frontend_allowed_origins" {
   type        = string
   description = "APIにアクセス可能なブラウザOriginのカンマ区切りリスト"
 }
+
+
+variable "test_apis_enabled" {
+  description = "Explicitly enable diagnostic APIs."
+  type        = bool
+  default     = false
+}

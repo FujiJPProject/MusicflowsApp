@@ -89,7 +89,7 @@ config = {
     "workerExecutionMode": os.environ[
         "WORKER_EXECUTION_MODE"
     ],
-    "testPagesEnabled": True,
+    "testPagesEnabled": {"true": True, "false": False}[os.environ.get("TEST_APIS_ENABLED", "true").lower()],
 }
 
 temporary_path = None

@@ -50,6 +50,7 @@ module "runtime" {
     var.frontend_origin,
     "http://${lower(module.frontend_delivery[0].distribution_id)}.cloudfront.localhost.floci.io:${var.floci_viewer_port}"
   ]) : var.frontend_origin
+  test_apis_enabled = var.test_apis_enabled
   worker_execution_mode = var.worker_execution_mode
   enable_snapstart = var.enable_snapstart
   api_zip_hash = var.api_zip_hash
@@ -88,3 +89,7 @@ output "frontend_distribution_id" {
 output "frontend_distribution_domain_name" {
   value = try(module.frontend_delivery[0].distribution_domain_name, null)
 }
+
+
+output "worker_execution_mode" { value = var.worker_execution_mode }
+output "test_apis_enabled" { value = var.test_apis_enabled }

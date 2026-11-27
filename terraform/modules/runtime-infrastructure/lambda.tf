@@ -24,7 +24,7 @@ resource "aws_lambda_function" "api" {
   environment {
     variables = {
       SPRING_PROFILES_ACTIVE = "lambda"
-      TEST_APIS_ENABLED = "true"
+      TEST_APIS_ENABLED = tostring(var.test_apis_enabled)
       APP_RUNTIME_TARGET = "floci"
       APP_AWS_REGION = var.aws_region
       AWS_ENDPOINT_URL = var.floci_internal_url
