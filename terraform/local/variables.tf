@@ -35,12 +35,12 @@ variable "enable_runtime_infrastructure" {
 
 variable "frontend_origin" {
   type    = string
-  default = "http://localhost:5173"
+  default = "http://localhost:5174"
 }
 
 variable "floci_host_url" {
   type    = string
-  default = "http://localhost:4566"
+  default = "http://localhost:4567"
 }
 
 variable "enable_snapstart" {

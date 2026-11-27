@@ -6,9 +6,14 @@ require_existing
 pool="$(output runtime_user_pool_id)"
 read -r -p '開発用ユーザー（メールアドレス）: ' username
 [[ -n "$username" ]] || exit 1
-if status="$(aws_test cognito-idp admin-get-user --user-pool-id "$pool" --username "$username" --query UserStatus --output text 2>/dev/null)"; then
+lookup_error="$(mktemp)"
+trap 'rm -f "$lookup_error"' EXIT
+if status="$(aws_test cognito-idp admin-get-user --user-pool-id "$pool" --username "$username" --query UserStatus --output text 2>"$lookup_error")"; then
   [[ "$status" == CONFIRMED ]] || { die "Existing user is $status; recover explicitly, no password reset."; exit 1; }
   log 'Existing confirmed user kept.'; exit 0
+fi
+if ! grep -q 'UserNotFoundException' "$lookup_error"; then
+  die 'Cognito lookup failed; refusing to create a user.'; exit 1
 fi
 read -rs -p '開発用ユーザーパスワード: ' password; printf '\n' >&2
 [[ -n "$password" ]] || exit 1

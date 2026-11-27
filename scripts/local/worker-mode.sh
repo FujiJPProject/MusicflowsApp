@@ -5,7 +5,9 @@ prepare
 require_existing
 mode="${1:-status}"
 if [[ "$mode" == status ]]; then
-  printf 'Terraform mode: %s\nMapping: %s\n' "$(output worker_execution_mode)" "$(mapping_state)"
+  current_mode="$(output worker_execution_mode)"
+  state="$(mapping_state)"
+  printf 'Terraform mode: %s\nMapping: %s\n' "$current_mode" "$state"
   dc --profile worker-local ps worker-local
   exit 0
 fi
@@ -23,7 +25,6 @@ fi
 if [[ "$mode" == local ]]; then
   wait_mapping Disabled
   assert_drained
-  dc --profile worker-local up -d --no-deps worker-local
 else
   wait_mapping Enabled
 fi
@@ -31,3 +32,7 @@ runtime_env
 # Recreate a running direct Backend only when its environment changed.
 if running backend; then dc up -d --no-deps backend; else rc=$?; [[ "$rc" == 1 ]] || exit "$rc"; fi
 run_local deploy-frontend
+if [[ "$mode" == local ]]; then
+  wait_mapping Disabled
+  dc --profile worker-local up -d --no-deps worker-local
+fi

@@ -36,6 +36,7 @@ lock_local() {
 }
 prepare() {
   command -v docker >/dev/null
+  command -v flock >/dev/null
   docker info >/dev/null
   docker compose version >/dev/null
   require_password
@@ -62,14 +63,17 @@ ensure_floci_mounts() {
   fi
 }
 state_kind() {
-  local pg=0 fl=0 st=0
-  if docker volume inspect "${PROJECT}_terraform_test_postgres_data" >/dev/null 2>&1; then pg=1; fi
-  if docker volume inspect "${PROJECT}_terraform_test_floci_data" >/dev/null 2>&1; then fl=1; fi
+  local pg=0 fl=0 st=0 volumes
+  volumes="$(docker volume ls --format '{{.Name}}')" || return 1
+  if grep -Fxq "${PROJECT}_terraform_test_postgres_data" <<< "$volumes"; then pg=1; fi
+  if grep -Fxq "${PROJECT}_terraform_test_floci_data" <<< "$volumes"; then fl=1; fi
   if [[ -s "$TFDIR/terraform.tfstate" ]]; then st=1; fi
   case "$pg$fl$st" in 000) echo new;; 111) echo existing;; *) echo partial;; esac
 }
 require_existing() {
-  [[ "$(state_kind)" == existing ]] || die 'State/Volume mismatch or new environment. See setup/troubleshooting; do not delete data.'
+  local kind
+  kind="$(state_kind)" || return 1
+  [[ "$kind" == existing ]] || die 'State/Volume mismatch or new environment. See setup/troubleshooting; do not delete data.'
 }
 wait_floci() {
   local n

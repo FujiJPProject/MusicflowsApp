@@ -2,10 +2,12 @@
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 prepare
-case "$(state_kind)" in
+kind="$(state_kind)"
+case "$kind" in
   existing) log 'Existing state and volumes: use start.sh or resume the failed step; no bootstrap.'; exit 1;;
   partial) die 'State/Volume mismatch. See troubleshooting. No automatic recovery.'; exit 1;;
   new) ;;
+  *) die "Unknown environment state: $kind"; exit 1;;
 esac
 confirm '新規環境を構築しますか？旧Shell環境のデータは自動移行しません。' || exit 1
 mkdir -p "$TFDIR" "$CACHE/frontend-config" "$CACHE/secrets" "$CACHE/backend-gradle" "$CACHE/worker-gradle" "$CACHE/worker-build" "$ROOT/backend/build/distributions" "$ROOT/frontend/dist"
