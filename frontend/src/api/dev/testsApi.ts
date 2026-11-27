@@ -11,7 +11,7 @@ export type CreateProjectRequest = {
 export class TestsApi {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, private readonly accessToken?: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 
@@ -48,9 +48,11 @@ export class TestsApi {
       ? path
       : `/${path}`;
 
+    const headers = new Headers(init?.headers);
+    if (this.accessToken) headers.set("Authorization", `Bearer ${this.accessToken}`);
     const response = await fetch(
       `${this.baseUrl}${normalizedPath}`,
-      init,
+      { ...init, headers },
     );
 
     const responseText = await response.text();

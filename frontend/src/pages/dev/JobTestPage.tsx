@@ -11,7 +11,7 @@ import {
   JobTestApi,
   type CompletedTestJobResult,
   type CreateTestJobResponse,
-} from "../../api/jobtest/jobTestApi";
+} from "../../api/dev/jobTestApi";
 import {
   signIn,
   type AuthSession,

@@ -5,7 +5,7 @@ import {
   AuthTestApi,
   type AuthenticatedUser,
   type Test,
-} from "../../api/auth/authTestApi";
+} from "../../api/dev/authTestApi";
 import { signIn, type AuthSession } from "../../auth/cognitoAuth";
 import {
   beginPkceLogin,
