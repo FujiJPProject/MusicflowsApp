@@ -11,7 +11,10 @@ export type CreateProjectRequest = {
 export class TestsApi {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string, private readonly accessToken?: string) {
+  private readonly accessToken?: string;
+
+  constructor(baseUrl: string, accessToken?: string) {
+    this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 

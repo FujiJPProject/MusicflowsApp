@@ -10,10 +10,10 @@ start_infra
 runtime_env
 # Preserve the running Floci container unless its CORS setting needs an explicit change.
 current="$(dc exec -T floci printenv FLOCI_SECURITY_EXTRA_CORS_ALLOWED_ORIGINS)"
-if [[ "$current" != "$FLOCI_CORS_ALLOWED_ORIGINS" ]]; then
-  confirm 'FlociのCORS設定反映のため再作成しますか？' || exit 1
+if [[ "$current" != "$FLOCI_CORS_ALLOWED_ORIGINS" ]] || ! dc exec -T floci test -f /app/scripts/check-frontend-config.py || ! dc exec -T floci test -d /app/backend-source; then
+  confirm 'FlociのCORS・マウント設定反映のため再作成しますか？' || exit 1
   if running worker-local; then die 'Stop worker-local before recreating Floci'; exit 1; fi
-  dc up -d --no-deps floci
+  dc up -d --no-deps --force-recreate floci
   wait_floci
 fi
 case "$mode" in

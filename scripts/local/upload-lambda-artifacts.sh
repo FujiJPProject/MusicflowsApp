@@ -12,7 +12,7 @@ cp "$TFVARS" "$backup/terraform.tfvars"
 for kind in "${targets[@]}"; do
   name="musicflows-$kind-lambda.zip"
   key="_lambda-artifacts/$name"
-  path="/app/lambda/springboot/$name"
+  path="/app/backend-source/build/distributions/$name"
   hash="$(dc exec -T floci python3 -c 'import sys,zipfile,hashlib,base64,pathlib; p=pathlib.Path(sys.argv[1]); z=zipfile.ZipFile(p); assert z.testzip() is None; print(base64.b64encode(hashlib.sha256(p.read_bytes()).digest()).decode())' "$path")"
   [[ "$hash" =~ ^[A-Za-z0-9+/]{43}=$ ]] || exit 1
   if aws_test s3api head-object --bucket "$bucket" --key "$key" > /dev/null 2>"$backup/head-$kind.log"; then

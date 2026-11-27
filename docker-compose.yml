@@ -49,8 +49,8 @@ services:
     volumes:
       - terraform_test_floci_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./backend/build/distributions:/app/lambda/springboot:ro
-      - ./frontend/dist:/app/frontend-dist:ro
+      - ./backend:/app/backend-source:ro
+      - ./frontend:/app/frontend-source:ro
       - ./floci/init/ready.d:/app/manual-init:ro
       - ./scripts:/app/scripts:ro
       - ./.docker-cache/terraform-test/frontend-config:/app/export/frontend-config

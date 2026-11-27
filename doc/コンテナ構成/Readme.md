@@ -1,105 +1,48 @@
-
 # コンテナ構成
 
-## 詳細
+標準開発環境はリポジトリ直下の docker-compose.yml。Compose Project は music-app-terraform-test、ネットワークは music-app-terraform-test-network。従来の Terraform 検証環境を昇格させた構成で、旧 Shell 環境とは別のデータを使用する。
 
- - 目的
-   - インフラを構築できていなくてもAWS上にのっけた前提のソースコードをローカル上で最初から作成、テストできる
-   - ローカルでAWSの動きと連携したテストができるのでわざわざクラウド側で試す回数も減り、クラウド側を汚さずに済む
+| サービス | 技術 | ホスト公開 | 役割 |
+|---|---|---|---|
+| postgres | PostgreSQL 16 | なし（内部 5432） | tests、test_jobs |
+| floci | latest-compat | 127.0.0.1:4567 | S3、SQS、DLQ、Cognito、SSM、Secrets Manager、Lambda、API Gateway、CloudFront |
+| frontend | Node.js 24 / Vite | 127.0.0.1:5174 | React 開発サーバー |
+| backend | Java 25 / Gradle | 127.0.0.1:8081 | Spring Boot 直接開発 |
+| terraform | Terraform 1.15.8 | なし | tools Profile の一時実行 |
+| worker-local | Java 25 | なし | worker-local Profile の SQS ポーリング |
 
-### 全体像
-
-![全体像](./images/docker.drawio.png)
-
-### Postgresコンテナ
-
-   - ソフトウェア：PostgreSQL16
-   - コンテナ名：music-app-postgres
-   - PC側のポート:コンテナ側のポート：5432:5432
-   - コンテナ起動時に渡す環境変数
-     - 初期作成するDB名：music_app
-     - 初期作成するユーザー名：app_user
-     - ユーザーのパスワード：app_password
-   - ヘルスチェック
-     - pg_isready でDB接続可能か確認
-     - インターバル：10秒ごとに確認
-     - タイムアウト：1回の確認を最大5秒待つ
-     - リトライ：10回失敗したら異常扱い
-
-### Floci コンテナ
-
-**Floci**
- - ローカルPC上で AWS API に似た動きを再現するオープンソースの AWS エミュレーター
- - LocakStackというAWSが公式に提供しているエミュレータもあるが2026年3月
-
- - ソフトウェア：floci
-   - コンテナ名：music-app-floci
-   - PC側のポート:コンテナ側のポート：4566:4566
-   - コンテナ起動時に渡す環境変数
-     - デフォルトリージョン：music_app
-     - ホスト名：app_user
-     - ストレージモード：維持
-     - 永続化するローカルパス：/app/data
-
-### Flociと初期化シェルの関係性
-
-![構成](./images/floci.drawio.png)
-
- | サービス                 | 作成するリソース                            | 用途                             |
-| -------------------- | ----------------------------------- | ------------------------------ |
-| S3                   | `music-app-local-files`             | 楽曲・音声・プロジェクトファイル保存             |
-| SQS                  | `music-app-local-music-jobs`        | 音源書き出し等の非同期処理                  |
-| SSM                  | `/music-app/local/app-name`         | アプリ名設定                         |
-| SSM                  | `/music-app/local/file-bucket-name` | ファイル保存先バケット名                   |
-| Secrets Manager      | `music-app/local/db`                | PostgreSQL 接続情報                |
-| Cognito              | `music-app-local-users`             | 認証用 User Pool                  |
-| Cognito              | `music-app-local-web-client`        | React 用 App Client             |
-| Cognito              | `local-user@example.com`            | ローカル確認用ユーザー                    |
-| Lambda               | `music-app-local-api-handler`       | Spring boot API Lambda |
-| Lambda               | `music-app-local-music-job-worker`  | SQS 疎通確認用 Worker Lambda        |
-| API Gateway          | `music-app-local-api`               | React から呼び出す REST API          |
-| Event Source Mapping | SQS → Worker Lambda                 | 非同期処理連携                        |
-
-
-
-### フォルダ構成
-
-```+music-app/
-├─ docker-compose.yml
-├─ docker/
-│  ├─ frontend/              React実行用コンテナ
-│  │  └─ Dockerfile.dev
-│  ├─ backend/
-│     ├─ Dockerfile.dev　　　Spring boot実行用コンテナ
-│     └─ Dockerfile.lambda
-├─ db/
-│  ├─ init/                   DB初期化実行SQL
-├─ frontend/                  React プロジェクト
-├─ backend/                   Spring Boot プロジェクト
-├─ floci/                     
-│  ├─ init/                   Floci 初期化シェル
-│  │  ├─ 01-init-s3.sh
-│  │  ├─ 02-init-sqs.sh
-│  │  ├─ 03-init-ssm.sh
-│  │  ├─ 04-init-secretsmanager.sh
-│  │  ├─ 05-init-cognito.sh
-│  │  ├─ 06-init-lambda.sh
-│  │  ├─ 07-init-api-gateway.sh
-│  │  ├─ 08-connect-sqs-lambda.sh
-│  │  └─ 09-export-frontend-config.sh
-│  └─ dist/
-│     └─ frontend-config.json
-└─ README.md
+```mermaid
+flowchart TD
+  Browser --> Vite[localhost:5174 Vite]
+  Browser --> CF[CloudFront / S3 :4567]
+  Vite --> Direct[Spring Boot :8081]
+  Vite --> Gateway[API Gateway :4567]
+  CF --> Gateway
+  Gateway --> API[API Lambda]
+  Direct --> DB[(PostgreSQL)]
+  API --> DB
+  API --> Secret[Secrets Manager]
+  Direct --> Queue[SQS / DLQ]
+  API --> Queue
+  Queue --> Mapping[Event Source Mapping]
+  Mapping --> Lambda[Worker Lambda]
+  Queue --> Local[Local Worker]
+  Local --> S3[S3 job results]
+  Lambda --> S3
+  TF[Terraform] --> Floci[Floci resources]
 ```
 
-## 補足()
+Mapping と Local Worker は排他的。Terraform がリソース定義を管理し、Shell はビルド・ZIP配備・Secret実値・テストユーザー・Runtime Config・Frontend配備を担当する。
 
- - **services**：Docker Compose で起動するアプリケーション単位のコンテナ定義
- - **volumes**
-   - コンテナからアクセスできる保存領域やホスト側ディレクトリをマウントする設定
-   - 名前付きボリュームは Compose のトップレベル volumes に定義して再利用できる
- - **networks**：コンテナ同士を接続させる仕組み
-   - ホスト→コンテナ：localhost:ポート番号
-   - コンテナ→コンテナ：サービス名:ポート番号
+| 保持対象 | 配置 |
+|---|---|
+| PostgreSQL Volume | music-app-terraform-test_terraform_test_postgres_data |
+| Floci Volume | music-app-terraform-test_terraform_test_floci_data |
+| Node modules Volume | music-app-terraform-test_terraform_test_frontend_node_modules |
+| Terraform State・tfvars | .docker-cache/terraform-test/terraform/local/ |
+| Runtime Config | .docker-cache/terraform-test/frontend-config/local-config.json |
 
-※環境変数を変更してもすでに既存DBには反映されないためボリュームも削除する必要がある
+旧構成の画像は移行前の記録として残す。現在の接続・構成は上記の表と図を正とする。
+
+- [環境構築手順](../開発環境/環境構築手順書.md)
+- [動作確認手順](../開発環境/動作確認手順書.md)

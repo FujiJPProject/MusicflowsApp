@@ -31,6 +31,6 @@ run_local upload-lambda-artifacts all
 run_local terraform plan
 run_local terraform apply
 run_local seed-cognito-user
-run_local deploy-frontend
 run_local start all
+run_local deploy-frontend
 run_local check

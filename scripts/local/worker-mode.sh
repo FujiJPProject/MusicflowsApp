@@ -26,4 +26,5 @@ if [[ "$mode" == local ]]; then
 else
   wait_mapping Enabled
 fi
+run_local export-frontend-config
 run_local deploy-frontend
